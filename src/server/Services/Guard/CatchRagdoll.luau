@@ -14,10 +14,15 @@
 -- L'étourdissement (Balance.Guard.CatchStunDuration) et la mise en scène (CatchScene) ne changent pas. L'Attachment
 -- GuardKnockback est posé comme avant (sans poussée) : son client joue Knockback puis Stunned (ChaseController).
 -- Le retour du vigile (CatchRagdoll.GuardReturns) est décidé par GuardService à la fin de Catch.
+-- a537 (L-501, Clément 28/11 « Ragdoll seul », Features.GuardCatchRagdollOnly / …Dev) : l'Attachment porte l'attribut
+-- RagdollOnly (posé avant d'entrer dans le personnage, il arrive avec lui chez le client) ; ChaseController ne joue alors
+-- pas Knockdown, et joue GetUp quand l'Attachment s'en va, retiré au relevé APRÈS que les Motor6D sont remis.
+-- GuardService n'envoie pas non plus la mise en scène (CatchScene).
 --
 -- API :
 --   CatchRagdoll.On() -> boolean
 --   CatchRagdoll.GuardReturns() -> boolean          à la fin de Catch, il rentre au lieu de garder l'objet tombé
+--   CatchRagdoll.RagdollOnly() -> boolean           a537 : à la capture en ragdoll, ni Knockdown ni CatchScene
 --   CatchRagdoll.Throw(player, from, antiCheat, cue) -> boolean   false : rien fait (module, personnage, déjà au sol)
 --   CatchRagdoll.IsDown(player) -> boolean
 
@@ -32,6 +37,8 @@ local Ragdoll = require(Shared.Ragdoll) :: any
 local Switch = require(script.Parent.Switch) :: any
 
 local SWITCH = "GuardCatchRagdoll"
+local ONLY_SWITCH = "GuardCatchRagdollOnly" -- a537 (L-501)
+local ONLY_ATTRIBUTE = "RagdollOnly" -- a537 : même nom dans ChaseController (client)
 local RAGDOLL_NAME = "GuardRagdoll" -- pièces posées par Shared/Ragdoll pour ce module
 local ACTIVE_GUARDS = "ActiveGuards" -- vigiles en jeu (GuardService), ignorés par les rayons
 local DEFAULT_GRAVITY = 196.2 -- Workspace.Gravity illisible (faux Roblox)
@@ -47,6 +54,7 @@ type Down = {
 	Collide: { [BasePart]: boolean },
 	PlatformStand: boolean,
 	Look: Vector3,
+	Cue: Instance?, -- a537 : signal du client, retiré au relevé (après les Motor6D)
 }
 
 local down: { [Player]: Down } = {}
@@ -116,6 +124,10 @@ function CatchRagdoll.GuardReturns(): boolean
 	return CatchRagdoll.On() and cfg().GuardReturns == true
 end
 
+function CatchRagdoll.RagdollOnly(): boolean
+	return CatchRagdoll.On() and Switch.On(ONLY_SWITCH)
+end
+
 function CatchRagdoll.IsDown(player: Player): boolean
 	return down[player] ~= nil
 end
@@ -149,6 +161,11 @@ local function standUp(state: Down, landed: boolean, antiCheat: any)
 	end
 	if character.Parent ~= nil then
 		Ragdoll.SetOwner(character, if player.Parent == Players then player else nil)
+	end
+	local cue = state.Cue
+	if cue then
+		state.Cue = nil
+		cue:Destroy() -- a537 : le client joue GetUp à ce moment (RagdollOnly), Motor6D déjà remis
 	end
 end
 
@@ -204,10 +221,11 @@ function CatchRagdoll.Throw(player: Player, from: Vector3, antiCheat: any, cue: 
 	if cue then
 		local signal = Instance.new("Attachment")
 		signal.Name = cue
+		if CatchRagdoll.RagdollOnly() then
+			signal:SetAttribute(ONLY_ATTRIBUTE, true)
+		end
 		signal.Parent = body
-		task.delay(c.Time, function()
-			signal:Destroy()
-		end)
+		state.Cue = signal -- retiré par standUp (relevé, mort, départ), après les Motor6D
 	end
 	task.delay(c.Time, function()
 		standUp(state, true, antiCheat)
