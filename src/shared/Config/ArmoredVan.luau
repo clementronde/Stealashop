@@ -139,9 +139,11 @@ local ArmoredVan = {
 	-- V2 (a516, décision de Cantin du 27/11 ; Features.ArmoredVanV2 / ArmoredVanV2Dev, l'emporte sur ArmoredVanBurst) ----
 	-- Plus de classement, de Top 3, de Big Box, de « meilleure zone du joueur » ni de PV selon les joueurs présents. Le
 	-- trajet (TravelTime) est coupé en paliers de StepTime s : palier n = zone StepZones[n] (zone 6 au départ, zone 1 à la
-	-- fin). Les dégâts reçus s'additionnent depuis le départ ; le fourgon casse dès que ce total atteint le seuil du palier
-	-- en cours (un palier qui commence avec un total déjà assez haut casse tout de suite). Pas cassé au bout de TravelTime s :
-	-- il s'échappe sans rien donner, comme avant.
+	-- fin). a533 (Cantin, 28/11 : plus jamais de casse sans coup) : le fourgon garde une progression, en part du seuil
+	-- (0 à moins de 1) ; chaque coup y ajoute dégâts / seuil du palier en cours, et le fourgon casse au coup qui la fait
+	-- atteindre 1 (100 %), jamais au changement de palier ni par un minuteur. Au changement de palier, la progression est
+	-- gardée telle quelle (bornée à CarryMax) : la jauge ne saute pas. Pas cassé au bout de TravelTime s : il s'échappe
+	-- sans rien donner, comme avant.
 	-- Seuil d'une zone, fixe (le même quel que soit le serveur) = ThresholdPlayers × ThresholdHitsPerSecond ×
 	-- ThresholdSeconds × Zones[zone].AdvisedDamage (la table active, lue par ArmoredVanService) : trois joueurs de la
 	-- puissance de la zone le cassent en 20 s s'ils frappent sans arrêt.
@@ -154,6 +156,7 @@ local ArmoredVan = {
 		ThresholdPlayers = 3, -- Cantin (27/11) : groupe de référence des seuils
 		ThresholdHitsPerSecond = 5, -- Cantin (27/11) : Balance.Hit.MaxHitsPerSecond
 		ThresholdSeconds = 20, -- Cantin (27/11)
+		CarryMax = 0.999, -- a533 (Cantin, 28/11) : progression gardée au plus au changement de palier (toujours < 1)
 		-- Cantin (27/11) : 12 colis, règles de Config/Rewards.ZoneBox comme les colis de zone du camion (TierZoneBox), zone de
 		-- référence = celle du palier : NextZone (zone au-dessus, ses 3 meilleures raretés 60/30/10, jamais Secret ; zone 6 :
 		-- les 3 meilleures de la zone 6), Zone (les chances des rayons), BestZone (meilleure rareté de la zone × 1,5).
@@ -165,8 +168,8 @@ local ArmoredVan = {
 		MinLuck = 3, -- Cantin (27/11) : au moins ×3 de chance à l'ouverture de chaque colis
 		-- L'objet sort toujours de la zone du palier, comme au camion (les 10 % de zone suivante sont retirés : Cantin, 27/11).
 		-- Jauge au-dessus du fourgon : BB_VanGauge de Clément (Assets/UI, facultatif) ou repli construit par le code :
-		-- Title (TextLabel, « ZONE 6 »), Bar/Fill (GuiObject, part du seuil du palier déjà atteinte), ProgressText (TextLabel,
-		-- facultatif), Steps/Step_1 à Step_6 (GuiObject, palier n ; facultatifs), chacun avec Current (palier en cours) et Done
+		-- Title (TextLabel, « ZONE 6 »), Bar/Fill (GuiObject, progression : part du seuil atteinte), ProgressText (TextLabel,
+		-- facultatif, « 42 % »), Steps/Step_1 à Step_6 (GuiObject, palier n ; facultatifs), chacun avec Current (palier en cours) et Done
 		-- (palier passé), GuiObject facultatifs que le code montre ou cache.
 		GaugeAsset = "BB_VanGauge", -- V0 proposé (Cantin, 27/11) : nom à confirmer par Clément
 		GaugeSize = Vector2.new(16, 4), -- V0 : repli, en studs
