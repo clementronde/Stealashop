@@ -3,20 +3,29 @@
 -- seconde de l'objet tenu en main, au-dessus de lui. Les cases de la barre du bas ne le montrent plus (texte de
 -- Clément transparent).
 --
---   - Objet en main = Tool du personnage local avec l'attribut HeldItemUid (HeldItemService, Config/HeldItem).
+--   - Objet en main = Tool d'un personnage avec l'attribut HeldItemUid (HeldItemService, Config/HeldItem).
 --     Une copie de ReplicatedStorage/Assets/UI/BB_HeldIncome de Clément (Config/Hud.HeldIncome ; absente : un
 --     billboard de repli aux mêmes noms) va dans le Tool : Adornee = sa poignée Handle, StudsOffsetWorldSpace = haut
 --     de l'objet au-dessus de la poignée (« moitié de sa hauteur », la poignée est en son centre) + HeldIncome.Above ;
 --     le StudsOffset de Clément (0,6) s'y ajoute. Le halo de rareté (RarityHalo) ne compte pas dans la hauteur.
---   - Texte d'Income = celui des cases de la barre (« $1.2K/s » : $/s de l'objet, mutation comprise, calculé par le
---     serveur ; état d'InventoryController), réécrit à chaque changement de l'inventaire. Objet absent de
---     l'inventaire : billboard éteint (Enabled).
---   - Objet rangé (Tool sorti du personnage) : la copie est détruite. Elle part aussi avec le Tool.
--- Le joueur local seulement (L-189 : à voir avec Clément si les autres joueurs le voient aussi). Rien n'est envoyé
--- au serveur ; seuls la copie, son Adornee, son StudsOffsetWorldSpace, son Enabled et le texte d'Income sont touchés.
+--   - Texte d'Income (« $1.2K/s ») : pour le joueur local, celui des cases de la barre ($/s calculé par le serveur ;
+--     état d'InventoryController), réécrit à chaque changement de l'inventaire ; objet absent de l'inventaire :
+--     billboard éteint (Enabled).
+--   - a469 (Cantin, 25/11 ; Config/HeldItem.IncomeForAll, Features.HeldIncomeAll / HeldIncomeAllDev) : allumé, le
+--     même billboard va aussi sur l'objet tenu par CHAQUE autre joueur ; son texte vient de l'attribut
+--     HeldItem.IncomeAttribute que le serveur pose sur le Tool (HeldItemService ; rien ne vient d'un client),
+--     réécrit quand l'attribut change ; attribut absent ou faux : billboard éteint. Coupé : le joueur local seul,
+--     comme avant.
+--   - Coût : un billboard par objet tenu au plus, rien par image ; la hauteur est recalculée une fois par image au
+--     plus quand des pièces arrivent (task.defer).
+--   - Nettoyage : objet rangé, posé, volé, lâché (Tool sorti du personnage ou détruit par le serveur), nouveau
+--     personnage (mort), joueur parti : la copie est détruite et ses connexions coupées. Elle part aussi avec le Tool.
+-- Rien n'est envoyé au serveur ; seuls la copie, son Adornee, son StudsOffsetWorldSpace, son Enabled et le texte
+-- d'Income sont touchés.
 --
 -- API (client ; Play, bancs) :
---   HeldIncomeController.GetState() -> { Shown: boolean, Uid: string?, Text: string?, Offset: number? }
+--   HeldIncomeController.GetState() -> { Shown: boolean, Uid: string?, Text: string?, Offset: number? }  (joueur local)
+--   HeldIncomeController.GetViews() -> { { Player: string, Uid: string, Shown: boolean, Text: string? } }  (a469 : tous)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -36,19 +45,28 @@ type InventoryApi = {
 	GetInventory: () -> { Items: { { Uid: string, Income: number } } },
 	OnChanged: (listener: () -> ()) -> () -> (),
 }
-type View = { tool: Tool, uid: string, gui: BillboardGui, label: TextLabel?, offset: number }
+type View = {
+	player: Player,
+	tool: Tool,
+	uid: string,
+	gui: BillboardGui,
+	label: TextLabel?,
+	offset: number,
+	pending: boolean,
+	connections: { RBXScriptConnection },
+}
 
 local CONF = HudConfig.HeldIncome
 local HANDLE = "Handle" -- HeldItemService
 local IS_STUDIO = RunService:IsStudio()
+local FOR_ALL = HeldItem.IncomeForAll == true
 
 local HeldIncomeController = {}
 
 local localPlayer = Players.LocalPlayer
 local inventory: InventoryApi? = nil
-local current: View? = nil
-local characterConnections: { RBXScriptConnection } = {}
-local toolConnection: RBXScriptConnection? = nil
+local views: { [Tool]: View } = {}
+local characterConnections: { [Player]: { RBXScriptConnection } } = {}
 local fallbackSaid = false
 
 -- Copie du billboard de Clément, sinon un repli aux mêmes noms (V0 : taille et place de son billboard).
@@ -104,7 +122,7 @@ local function topAbove(tool: Tool, handle: BasePart): number
 	return if top then math.max(top, 0) else 0
 end
 
-local function incomeOf(uid: string): number?
+local function inventoryIncome(uid: string): number?
 	local api = inventory
 	if api == nil then
 		return nil
@@ -117,12 +135,17 @@ local function incomeOf(uid: string): number?
 	return nil
 end
 
-local function write()
-	local view = current
-	if view == nil then
-		return
+-- a469 : $/s posé par le serveur sur le Tool d'un autre joueur ; nil s'il manque ou n'est pas un nombre positif fini.
+local function attributeIncome(tool: Tool): number?
+	local value = tool:GetAttribute(HeldItem.IncomeAttribute)
+	if type(value) ~= "number" or value ~= value or value < 0 or value == math.huge then
+		return nil
 	end
-	local income = incomeOf(view.uid)
+	return value
+end
+
+local function write(view: View)
+	local income = if view.player == localPlayer then inventoryIncome(view.uid) else attributeIncome(view.tool)
 	local label = view.label
 	if label and income ~= nil then
 		local text = string.format(CONF.Text, Format.money(income))
@@ -133,50 +156,95 @@ local function write()
 	view.gui.Enabled = income ~= nil
 end
 
+local function writeLocal()
+	for _, view in views do
+		if view.player == localPlayer then
+			write(view)
+		end
+	end
+end
+
 local function place(view: View, handle: BasePart)
 	view.offset = topAbove(view.tool, handle)
 	view.gui.StudsOffsetWorldSpace = Vector3.new(0, view.offset + CONF.Above, 0)
 end
 
-local function detach()
-	local view = current
-	current = nil
-	if toolConnection then
-		toolConnection:Disconnect()
-		toolConnection = nil
+local function detach(tool: Tool)
+	local view = views[tool]
+	if view == nil then
+		return
 	end
-	if view then
-		view.gui:Destroy()
+	views[tool] = nil
+	for _, connection in view.connections do
+		connection:Disconnect()
+	end
+	table.clear(view.connections)
+	view.gui:Destroy()
+end
+
+-- Tous les billboards d'un joueur (nouvel objet en main, nouveau personnage, départ).
+local function detachPlayer(player: Player)
+	local tools = {}
+	for tool, view in views do
+		if view.player == player then
+			table.insert(tools, tool)
+		end
+	end
+	for _, tool in tools do
+		detach(tool)
 	end
 end
 
-local function attach(tool: Tool)
+local function attach(player: Player, tool: Tool)
 	local uid = tool:GetAttribute(HeldItem.ToolAttribute)
 	local handle = tool:FindFirstChild(HANDLE)
 	if type(uid) ~= "string" or handle == nil or not handle:IsA("BasePart") then
 		return
 	end
-	detach()
+	detachPlayer(player) -- un seul objet en main par joueur : un seul billboard
 	local gui = billboard()
 	gui.Name = CONF.Name
 	gui.Adornee = handle
 	local found = Find.path(gui, CONF.Label)
 	local view: View = {
+		player = player,
 		tool = tool,
 		uid = uid,
 		gui = gui,
 		label = if found and found:IsA("TextLabel") then found :: TextLabel else nil,
 		offset = 0,
+		pending = false,
+		connections = {},
 	}
-	current = view
+	views[tool] = view
 	place(view, handle :: BasePart)
-	-- Pièces de l'objet arrivées après le Tool : la hauteur est recalculée.
-	toolConnection = tool.DescendantAdded:Connect(function(inst: Instance)
-		if current == view and inst:IsA("BasePart") then
-			place(view, handle :: BasePart)
-		end
-	end)
-	write()
+	-- Pièces de l'objet arrivées après le Tool (réplication) : la hauteur est recalculée, une fois par image au plus.
+	table.insert(
+		view.connections,
+		tool.DescendantAdded:Connect(function(inst: Instance)
+			if views[tool] ~= view or view.pending or not inst:IsA("BasePart") then
+				return
+			end
+			view.pending = true
+			task.defer(function()
+				view.pending = false
+				if views[tool] == view then
+					place(view, handle :: BasePart)
+				end
+			end)
+		end)
+	)
+	if player ~= localPlayer then
+		table.insert(
+			view.connections,
+			tool:GetAttributeChangedSignal(HeldItem.IncomeAttribute):Connect(function()
+				if views[tool] == view then
+					write(view)
+				end
+			end)
+		)
+	end
+	write(view)
 	gui.Parent = tool
 end
 
@@ -184,48 +252,92 @@ local function isHeld(inst: Instance): boolean
 	return inst:IsA("Tool") and inst:GetAttribute(HeldItem.ToolAttribute) ~= nil
 end
 
-local function watchCharacter(character: Model)
-	for _, connection in characterConnections do
-		connection:Disconnect()
+local function watchCharacter(player: Player, character: Model)
+	local connections = characterConnections[player]
+	if connections then
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+		table.clear(connections)
+	else
+		connections = {}
+		characterConnections[player] = connections
 	end
-	table.clear(characterConnections)
-	detach()
+	local list = connections :: { RBXScriptConnection }
+	detachPlayer(player)
 	table.insert(
-		characterConnections,
+		list,
 		character.ChildAdded:Connect(function(child: Instance)
 			if isHeld(child) then
-				attach(child :: Tool)
+				attach(player, child :: Tool)
 			end
 		end)
 	)
 	table.insert(
-		characterConnections,
+		list,
 		character.ChildRemoved:Connect(function(child: Instance)
-			local view = current
-			if view and view.tool == child then
-				detach()
+			if child:IsA("Tool") then
+				detach(child :: Tool)
 			end
 		end)
 	)
 	for _, child in character:GetChildren() do
 		if isHeld(child) then
-			attach(child :: Tool)
+			attach(player, child :: Tool)
 		end
 	end
 end
 
-function HeldIncomeController.GetState(): { Shown: boolean, Uid: string?, Text: string?, Offset: number? }
-	local view = current
-	if view == nil then
-		return { Shown = false }
+-- a469 : joueur parti : ses connexions et ses billboards.
+local function forget(player: Player)
+	local connections = characterConnections[player]
+	characterConnections[player] = nil
+	if connections then
+		for _, connection in connections do
+			connection:Disconnect()
+		end
 	end
-	local label = view.label
-	return {
-		Shown = view.gui.Enabled and view.gui.Parent ~= nil,
-		Uid = view.uid,
-		Text = if label then label.Text else nil,
-		Offset = view.offset,
-	}
+	detachPlayer(player)
+end
+
+local function watchPlayer(player: Player)
+	player.CharacterAdded:Connect(function(character: Model)
+		watchCharacter(player, character)
+	end)
+	local character = player.Character
+	if character then
+		watchCharacter(player, character)
+	end
+end
+
+function HeldIncomeController.GetState(): { Shown: boolean, Uid: string?, Text: string?, Offset: number? }
+	for _, view in views do
+		if view.player == localPlayer then
+			local label = view.label
+			return {
+				Shown = view.gui.Enabled and view.gui.Parent ~= nil,
+				Uid = view.uid,
+				Text = if label then label.Text else nil,
+				Offset = view.offset,
+			}
+		end
+	end
+	return { Shown = false }
+end
+
+-- a469 : un billboard par objet tenu, chez tous les joueurs suivis (le joueur local seul si IncomeForAll est coupé).
+function HeldIncomeController.GetViews(): { { Player: string, Uid: string, Shown: boolean, Text: string? } }
+	local out = {}
+	for _, view in views do
+		local label = view.label
+		table.insert(out, {
+			Player = view.player.Name,
+			Uid = view.uid,
+			Shown = view.gui.Enabled and view.gui.Parent ~= nil,
+			Text = if label then label.Text else nil,
+		})
+	end
+	return out
 end
 
 function HeldIncomeController.Start()
@@ -238,14 +350,18 @@ function HeldIncomeController.Start()
 	end
 	local api = inventory
 	if api then
-		api.OnChanged(write)
+		api.OnChanged(writeLocal)
 	elseif IS_STUDIO then
 		warn("[HeldIncomeController] InventoryController absent : pas de revenu au-dessus de l'objet en main")
 	end
-	localPlayer.CharacterAdded:Connect(watchCharacter)
-	local character = localPlayer.Character
-	if character then
-		watchCharacter(character)
+	if FOR_ALL then
+		Players.PlayerAdded:Connect(watchPlayer)
+		Players.PlayerRemoving:Connect(forget)
+		for _, player in Players:GetPlayers() do
+			watchPlayer(player)
+		end
+	else
+		watchPlayer(localPlayer)
 	end
 end
 

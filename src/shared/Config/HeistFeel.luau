@@ -9,6 +9,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a524 : module de Config chargé s'il est là (bancs à liste de modules fixe), comme Config/Outlines.
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+
 local HeistFeel = {
 	-- 1. Capture mise en scène (CatchSceneController, remote CatchScene de GuardService, au coup du vigile :
 	-- marqueur Impact de Catch, ou délai de secours). Tout tient dans l'étourdissement (Balance.Guard.CatchStunDuration).
@@ -73,7 +89,7 @@ local HeistFeel = {
 		RiseTime = 0.43, -- L-184 : le « +$ » monte
 		Rise = 40, -- V0 (px)
 		Pause = 0.15, -- L-184 : courte pause
-		FlyTime = 0.47, -- L-184 : les billets volent vers le compteur
+		FlyTime = 0.45, -- L-447 (Mouvements_UI, règle 6 ; avant 0,47, L-184) : les billets volent vers le compteur, Quad In
 		Bills = 6, -- V0
 		Stagger = 0.03, -- V0 : écart entre deux billets
 		Spread = 36, -- V0 (px) : dispersion au départ
@@ -82,6 +98,17 @@ local HeistFeel = {
 		FadeTime = 0.25, -- V0 : le « +$ » s'efface quand les billets partent
 		Sound = "Cash_Collect", -- comme UiMotion.CashFly.Sound, une fois à l'arrivée
 		IndexPrefix = "UI_Index", -- écrans de l'index (UI_Index, UI_Index_v3…)
+		-- a524 (L-447, Features.GainFlyToCounter / GainFlyToCounterDev) : les billets s'écartent d'abord jusqu'à leur place
+		-- au hasard (Spread) en SpreadTime s (Quad Out) avant de voler ; à l'arrivée du premier, IconPop.Name de CashRow
+		-- rebondit de IconPop.From à 1 en IconPop.Time s (Back Out) ; les gains hors ligne réclamés ont aussi leurs billets.
+		-- Coupé : billets posés d'un coup à leur place et qui volent tout de suite, sans rebond, hors ligne sans billets.
+		SpreadEnabled = Features.GainFlyToCounter == true or (Features.GainFlyToCounterDev == true and ProductIds.IsDev == true),
+		SpreadTime = 0.28, -- L-447
+		IconPop = {
+			Name = "CashIcon", -- UI_HUD, enfant de CashRow (Frame de Clément) ; absent : pas de rebond
+			From = 1.25, -- L-447
+			Time = 0.15, -- L-447, Back Out
+		},
 	},
 
 	-- 5. « ITEM SECURED! » en carte (CatchSceneController, remote ItemSecured, éléments facultatifs de UI_Escape).
