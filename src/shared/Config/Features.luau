@@ -300,6 +300,14 @@ local Features = {
 	SecuredFireworks = false,
 	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SecuredFireworksDev = true,
+	-- a541 (L-511, piste A, Clément 28/11) : pendant qu'un joueur porte (attribut Carrying du Player, CarryService), chez
+	-- tous les joueurs, chaque Attachment de son aura (CosmeticFx) marqué CarryMode par Clément : « Off » = émetteurs,
+	-- lumières et Beams éteints ; « Dim » = débit × Cosmetics.CarryAura.DimRate et Brightness × DimLight ; tout revient à
+	-- la fin du port (CosmeticController). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain,
+	-- T-461) ; false = aura entière pendant le port, comme avant (seule la piste B de Clément, sans code).
+	AuraCarryMode = false,
+	-- a541 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	AuraCarryModeDev = true,
 	-- a521 (L-405, Clément 25 et 26/11) : carte ITEM SECURED spectaculaire (Controllers/Escape/SecuredCard, réglages
 	-- Config/SecuredCard) : l'objet en 3D dans Card.Preview, le sunburst (Rays, RaysBack, Burst, Rain) teint à la couleur
 	-- de la rareté et réglé par palier (Normal, Légendaire, Grand : Mythique et plus, gros objet, coup de chance),
