@@ -498,6 +498,19 @@ local function itemIncomeOf(entry: any): number
 	)
 end
 
+-- a521 (L-405) : coup de chance de l'objet rangé (Shared/SecuredTier, chargé s'il est là : bancs sans lui) ; nil quand
+-- Features.SecuredCardV2 est coupé, ou en cas d'erreur.
+local function luckyOf(player: Player, itemId: string, mutation: any): boolean?
+	local module = Shared:FindFirstChild("SecuredTier")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, lucky = pcall(function(): boolean?
+		return (require(module) :: any).LuckyFor(player, itemId, mutation)
+	end)
+	return if ok and type(lucky) == "boolean" then lucky else nil
+end
+
 local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)
 	for _, listener in table.clone(list) do
 		task.spawn(listener, player, itemUid, itemId)
@@ -967,7 +980,9 @@ local function stowItem(player: Player, data: Data, payload: any)
 	-- a502 : et son revenu, celui de la boutique (mutation et poids compris).
 	local okIncome, income = pcall(itemIncomeOf, data.Items[itemUid])
 	local secured, securedErr = pcall(function()
-		Net.Server.ItemSecured:Fire(player, def.Id, if okIncome then income else nil)
+		-- a521 (L-405) : et son poids (Card.Weight), et le coup de chance (Shared/SecuredTier, Features.SecuredCardV2).
+		local stowed: any = data.Items[itemUid] or {}
+		Net.Server.ItemSecured:Fire(player, def.Id, if okIncome then income else nil, stowed.Weight, luckyOf(player, def.Id, stowed.Mutation))
 	end)
 	if not secured then
 		warn(`[UnboxService] ItemSecured vers {player.Name} : {securedErr}`)

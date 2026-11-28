@@ -685,6 +685,12 @@ local List: { RemoteDef } = {
 			-- a502 (Cantin, 26/11) : revenu de l'objet ($/s, entier, mutation et poids compris, Formulas.RoundIncome)
 			-- calculé par le serveur ; la carte « ITEM SECURED! » le montre tel quel ; absent : le client le calcule.
 			{ Name = "income", Kind = "int", Min = 0, Optional = true },
+			-- a521 (L-405, bug du Play du lot 1) : poids de l'objet (kg, celui du profil) ; la carte l'écrit dans
+			-- Card.Weight (Shared/ItemWeight.Format) ; absent (objet du tuto, ancien serveur) : Weight vide.
+			{ Name = "weight", Kind = "number", Min = 0, Optional = true },
+			-- a521 (L-405, Features.SecuredCardV2) : coup de chance (Shared/SecuredTier.LuckyFor, calculé par le serveur) :
+			-- la carte passe au grand palier, « LUCKY! » ; absent : false.
+			{ Name = "lucky", Kind = "boolean", Optional = true },
 		},
 	},
 	{

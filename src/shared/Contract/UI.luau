@@ -1711,5 +1711,19 @@ for index = #UI.Screens, 1, -1 do
 end
 UI.Retired.Screens["UI_Index"] = "ancien index, plus lu : UI_Index_v3 seul (a508, L-475)"
 UI.Retired.Screens["UI_Index_v2"] = "ancien index v2, plus lu : UI_Index_v3 seul (a508, L-475)"
+-- a521 (L-405, 28/11) : carte ITEM SECURED. Card.Weight (poids de l'objet, toujours) ; le reste est lu par
+-- Controllers/Escape/SecuredCard (Features.SecuredCardV2). Livrés par le chef UI (25 et 26/11), tous facultatifs.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Escape" then
+		table.insert(screenDef.Elements, { Path = "Card.Weight", Class = "TextLabel", Optional = true, Note = "le poids de l'objet n'est pas écrit" })
+		table.insert(screenDef.Elements, { Path = "Card.Preview", Class = "ViewportFrame", Optional = true, Note = "pas d'objet en 3D (ItemIcon reste)" })
+		table.insert(screenDef.Elements, { Path = "Card.Rays", Class = "ImageLabel", Optional = true, Note = "pas de sunburst" })
+		table.insert(screenDef.Elements, { Path = "Card.RaysBack", Class = "ImageLabel", Optional = true, Note = "pas de 2e sunburst (Légendaire et plus)" })
+		table.insert(screenDef.Elements, { Path = "Card.Burst", Class = "ImageLabel", Optional = true, Note = "pas d'éclat à l'arrivée (Légendaire et plus)" })
+		table.insert(screenDef.Elements, { Path = "Card.TierScale", Class = "UIScale", Optional = true, Note = "la carte ne grandit pas au grand palier" })
+		table.insert(screenDef.Elements, { Path = "Card.RarityTag", Class = "TextLabel", Optional = true, Note = "pas de « MYTHIC! » ni de « LUCKY! »" })
+		table.insert(screenDef.Elements, { Path = "SecuredFx.Rain.Template", Class = "ImageLabel", Optional = true, Template = true, Note = "pas de pluie d'étoiles au grand palier" })
+	end
+end
 
 return UI

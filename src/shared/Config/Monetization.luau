@@ -262,9 +262,9 @@ local Products: { Product } = {
 	-- et textes. Vague 73 (a253, L-240 point 2) : icône UI_Icon_DP_Luck3, celle de la carte SERVER LUCK de Clément
 	-- (Luck3 n'est pas en vente, Ready = false : pas deux offres à la même icône tant qu'il le reste).
 	-- a476 (L-375, Clément 25/11 : « les chances durent 30 minutes ») : 30 min au lieu de 15 (LuckMinutes et Effect).
-	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 30, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 30, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 30, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 30, DisplayName = "×2 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 30, DisplayName = "×4 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 30, DisplayName = "×8 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
 }
 
 -- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
