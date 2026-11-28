@@ -138,6 +138,13 @@ local Features = {
 	-- WindowBroken, HighRarityOpened, ItemSold, LoadingTime, gains pas encore comptés (receleur, codes, dons du tuto,
 	-- prime au complice). Sous Config/Telemetry.Enabled. false = rien de cela.
 	Analytics = true,
+	-- a532 (Cantin, 28/11) : vrai écran de chargement (ReplicatedFirst/First/LoadingScreen et LoadingFlow) : on entre
+	-- dans le jeu quand le jeu, le profil, le personnage, les écrans principaux, la zone streamée et les assets clés sont
+	-- prêts (Skip, ou au plus tard LoadingConfig.MaxWait s) ; barre et pourcentage suivent ces étapes ; le tuto et les
+	-- gains hors ligne attendent l'attribut LoadingDone (Shared/LoadingGate). false = le déroulé d'a187. Lu par le
+	-- client au chargement (pris au prochain serveur). LoadingRealDev : jeu DEV et TEST (Config/ProductIds.IsDev).
+	LoadingReal = false,
+	LoadingRealDev = true,
 	-- a408 (vague GC6, MAJ 5 « Défense de la boutique », Cantin 23/11 : tout maintenant ; V0 à valider par Clément) :
 	-- tuiles de l'arbre devenues achetables (Config/SkillTree, Config/ShopDefense, ShopDefenseService) ; false = la
 	-- tuile reste « Soon » et rien n'est posé.
