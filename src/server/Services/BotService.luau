@@ -97,6 +97,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local BatConfig = require(Shared.Config.Bat)
 local Bot = require(Shared.Config.Bot)
+local Features = require(Shared.Config.Features)
 local Formulas = require(Shared.Config.Formulas)
 local Items = require(Shared.Config.Items)
 local AnimContract = require(Shared.Contract.Animations)
@@ -192,6 +193,11 @@ local ANIMATIONS = "Animations" -- contrat 2.4 : <Modèle>/Animations/<Nom>
 local IDLE = "Idle"
 local RUN = "Run" -- vague 37 : comme les vigiles (contrat 2.4, Animations.Guard)
 local SWING = "SwingBat" -- celle du joueur (Animations.Player)
+-- a539 (L-506) : marche du retour à sa place, celle des vigiles (groupe ; registre de la liaison, section 2). Le
+-- BotAvatar n'existe qu'en Play : le code la crée dans son dossier Animations s'il ne l'a pas, sous Features.BotWalk
+-- (PROD) ou BotWalkDev (jeu DEV). Coupé : Run au retour, comme avant.
+local WALK = "Walk"
+local WALK_ID = "rbxassetid://131553467994764"
 local IMPACT = "Impact"
 local SWING_SOUND = "SwingBat_Impact" -- MarkerSounds.Player
 -- Animations par défaut de Roblox gardées du script Animate quand le modèle n'a pas les siennes.
@@ -399,6 +405,22 @@ local function clementAvatar(): Model?
 	return copy
 end
 
+-- a539 (L-506) : Features.BotWalk, ou BotWalkDev dans le jeu DEV (Config/ProductIds.IsDev).
+local function walkOn(): boolean
+	if Features.BotWalk == true then
+		return true
+	end
+	if Features.BotWalkDev ~= true then
+		return false
+	end
+	local module = Shared.Config:FindFirstChild("ProductIds")
+	if module == nil or not module:IsA("ModuleScript") then
+		return false
+	end
+	local ok, ids = pcall(require, module :: ModuleScript)
+	return ok and type(ids) == "table" and (ids :: any).IsDev == true
+end
+
 -- Avatar R15 par défaut de Roblox (attend) ; nil s'il ne se crée pas.
 local function defaultAvatar(): Model?
 	local description = Instance.new("HumanoidDescription")
@@ -446,6 +468,21 @@ local function prepare(model: Model): Model?
 			copy.Name = entry.Name
 			copy.Parent = folder
 		end
+	end
+	-- a539 (L-506) : Walk créée par le code (voir WALK).
+	if walkOn() and (animations == nil or animations:FindFirstChild(WALK) == nil) then
+		local folder: Instance? = animations
+		if folder == nil then
+			local created = Instance.new("Folder")
+			created.Name = ANIMATIONS
+			created.Parent = model
+			folder = created
+			animations = created
+		end
+		local walk = Instance.new("Animation")
+		walk.Name = WALK
+		walk.AnimationId = WALK_ID
+		walk.Parent = folder
 	end
 	local grouped = doorGroups()
 	for _, descendant in model:GetDescendants() do
@@ -533,6 +570,20 @@ local function playLooped(current: State, name: string)
 	if track then
 		track.Looped = true
 		track:Play()
+	end
+end
+
+-- a539 (L-506) : allure du bot en poursuite (Run) ou au retour (Walk si allumée et chargée, sinon Run).
+local function setGait(current: State, returning: boolean)
+	local walk = if returning and walkOn() then trackOf(current, WALK) else nil
+	local run = trackOf(current, RUN)
+	local want, other = if walk then walk else run, if walk then run else current.Tracks[WALK]
+	if other and other.IsPlaying then
+		other:Stop()
+	end
+	if want and not want.IsPlaying then
+		want.Looped = true
+		want:Play()
 	end
 end
 
@@ -972,6 +1023,7 @@ local function settle(current: State, humanoid: Humanoid, root: BasePart, why: s
 	end
 	root.Anchored = true
 	stopTrack(current, RUN)
+	stopTrack(current, WALK) -- a539
 	stopTrack(current, SWING)
 	playLooped(current, IDLE)
 	-- Vague 42 (L-146 point 2) : la batte reste en main (avant : rangée ici) ; remise si elle a disparu.
@@ -1084,6 +1136,7 @@ local function alert(current: State, player: Player, why: "Door" | "Grab")
 		if why == "Grab" then
 			chase.Engaged[player] = true
 		end
+		setGait(current, false) -- a539 : il repart du retour en courant
 		chase.OutsideSince = nil -- un nouveau vol relance le compte (recompté au prochain pas s'il est dehors)
 	end
 	log(`le bot poursuit {player.Name} ({if why == "Door" then "il casse sa porte" else "objet pris"})`)
@@ -1192,6 +1245,7 @@ local function defenseStep()
 			settle(current, humanoid, root, `pas rentré en {DEFENSE.ReturnTimeout} s, replacé`)
 		else
 			humanoid.WalkSpeed = DEFENSE.RunSpeed
+			setGait(current, true) -- a539 (L-506) : Walk au retour
 			walkTowards(current, humanoid, root, home.Position)
 		end
 	end

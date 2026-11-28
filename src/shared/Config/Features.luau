@@ -98,6 +98,10 @@ local Features = {
 	-- (PlayerCollisionService) ; ils touchent toujours le décor, les vigiles, le bot, les PNJ, le mur de nuit, les
 	-- vitrines et les portes. false = les joueurs se traversent ; true = le contact entre joueurs d'avant.
 	PlayerCollision = false,
+	-- a539 (L-506) : le robot de la boutique (BotService) joue Walk en revenant à sa place, au lieu de Run ; T-453 pas encore
+	-- passé (C2) : false en PROD, allumé en DEV par BotWalkDev (Config/ProductIds.IsDev). false = Run au retour, comme avant.
+	BotWalk = false,
+	BotWalkDev = true,
 	-- a413 (vague GC7, 23/11) : badges du jeu (BadgeService, Config/Badges ; Id à 0 = badge sauté) ; V0 proposé (Cantin, 23/11) : true ; false = aucun badge donné.
 	Badges = true,
 	-- Vague GC6 (a410, MAJ 7) : notifications Roblox hors du jeu (Config/Notifications, NotificationService, demande de
