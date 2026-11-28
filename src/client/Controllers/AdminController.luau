@@ -22,6 +22,9 @@
 --   - EventList : un clic lance l'événement (StartEvent) ; ZoneList : un clic téléporte la cible (Teleport).
 --   - ResetProfileButton : premier clic, StatusLabel « Click again to confirm » ; second clic dans les
 --     RESET_WINDOW s, ResetProfile part avec le mot de confirmation.
+--   - ForceSection (a527, Cantin 28/11) : ForceButton envoie ForceNextUnbox avec l'objet et la mutation choisis dans
+--     GiveSection (sorte Item) et le poids tapé dans WeightBox (« 10000 », « 10K ») ; ClearButton efface le choix.
+--     Absente de l'écran : un repli gris est construit sous GiveSection (seul ajout du code dans l'écran de Clément).
 -- Ce qui est touché dans l'écran de Clément : Enabled, Visible de AdminButton, des Selected, de MutationTitle /
 -- MutationList et des copies de Template, les textes de StatusLabel, TargetLabel et EntryName. Écran recréé
 -- (ResetOnSpawn) : rebranché, fermé.
@@ -319,6 +322,49 @@ local function textBox(gui: Instance, name: string): TextBox?
 	return if found and found:IsA("TextBox") then found :: TextBox else nil
 end
 
+-- a527 : ForceSection de Clément, sinon un repli gris construit ici (une fois par écran), juste après GiveSection :
+-- WeightBox, ForceButton, ClearButton (contrat : Contract/UI, éléments facultatifs). nil sans GiveSection où le poser.
+local function forceSection(gui: ScreenGui): Instance?
+	local existing = Find.path(gui, "ForceSection")
+	if existing then
+		return existing
+	end
+	local give = Find.path(gui, "GiveSection")
+	local parent = if give then give.Parent else nil
+	if give == nil or parent == nil or not give:IsA("GuiObject") then
+		reportOnce("force", `[Admin] {SCREEN}.GiveSection introuvable : ForceSection pas construite`)
+		return nil
+	end
+	local section = Instance.new("Frame")
+	section.Name = "ForceSection"
+	section.BackgroundTransparency = 1
+	section.Size = UDim2.new(1, 0, 0, 0)
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.LayoutOrder = (give :: GuiObject).LayoutOrder + 1
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.Padding = UDim.new(0.02, 0)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = section
+	local function cell(class: string, name: string, text: string, order: number): GuiObject
+		local object = Instance.new(class :: any) :: any
+		object.Name = name
+		object.Size = UDim2.new(0.3, 0, 0, 44) -- 44 px : hauteur minimale d'un bouton sur téléphone
+		object.LayoutOrder = order
+		object.TextScaled = true
+		object.Text = text
+		object.Parent = section
+		return object
+	end
+	local box = cell("TextBox", "WeightBox", "", 1) :: any
+	box.PlaceholderText = "kg (10000, 10K)"
+	box.ClearTextOnFocus = false
+	cell("TextButton", "ForceButton", "Force next box", 2)
+	cell("TextButton", "ClearButton", "Clear", 3)
+	section.Parent = parent
+	return section
+end
+
 local function bind(gui: ScreenGui)
 	local old = screen
 	if old then
@@ -408,6 +454,26 @@ local function bind(gui: ScreenGui)
 		else
 			send(kind.command, nil, chosen)
 		end
+	end)
+
+	-- a527 : ForceSection (prochain colis de l'admin) : objet et mutation choisis dans GiveSection (sorte Item).
+	local force = forceSection(gui)
+	local weightBox = if force then textBox(force, "WeightBox") else nil
+	onActivated(current, "ForceSection.ForceButton", function()
+		local chosen = choiceId
+		if KINDS[kindIndex].list ~= "Items" or chosen == nil then
+			setStatus("Pick an item in Give first.")
+			return
+		end
+		local kg = if weightBox then AdminController.ParseNumber(weightBox.Text) else nil
+		if kg == nil then
+			setStatus("Type a weight first (10000, 10K).")
+			return
+		end
+		send("ForceNextUnbox", kg, chosen, if mutationId ~= "" then mutationId else nil)
+	end)
+	onActivated(current, "ForceSection.ClearButton", function()
+		send("ForceNextUnbox", nil, Admin.ForceClear)
 	end)
 
 	fill(current, listOf(gui, "EventList.Template"), AdminLists.Entries("Events"), function(_id: string): boolean

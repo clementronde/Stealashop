@@ -60,6 +60,11 @@
 --                                      profil est remplacé par DataService.NewData() juste avant sa sauvegarde
 --                                      (OnProfileReleasing, abonné en dernier), en gardant Purchases et
 --                                      Monetization (achats Robux : idempotence, 9.6)
+--   ForceNextUnbox (a527)              text = ItemId (tout le catalogue) ou Admin.ForceClear, value = kg
+--                                      (ItemWeight.IsValidKg), text2 = mutation d'effet (facultative ; une taille est
+--                                      refusée : elle suit le poids). Pour l'admin lui-même : son prochain colis ouvert
+--                                      (StoreHeistService.SetAdminContentOverride, avant le tuto), une seule fois ;
+--                                      effacé à son départ. Refusée si Features.AdminForceUnbox / …Dev est coupé
 --
 -- Crochets Studio : écouter des attributs du Workspace ne vaut qu'en Studio (en-têtes de ces services) ; les
 -- commandes qui en dépendent sont StudioOnly. Les ouvrir en ligne : une ligne par service, à décider.
@@ -162,6 +167,10 @@ end)()
 
 local AdminService = {}
 AdminService.Priority = 1000 -- en dernier : son OnProfileReleasing passe après celui des autres services
+
+-- a527 : prochain colis choisi par chaque admin (ForceNextUnbox), rendu une fois à StoreHeistService puis effacé.
+type ForcedUnbox = { ItemId: string, Weight: number, Mutation: Mutations.Mutation? }
+local forcedUnbox: { [Player]: ForcedUnbox } = {}
 
 local groupRanks: { [Player]: number } = {}
 local rankReadAt: { [Player]: number } = {} -- os.clock() de la dernière lecture réussie du rang
@@ -675,6 +684,85 @@ handlers.ResetProfile = function(call: Call): (boolean, string)
 	return true, `{name}'s profile will be reset`
 end
 
+-- a527 : Features.AdminForceUnbox (partout) ou AdminForceUnboxDev (jeu DEV et TEST, Config/ProductIds.IsDev), lus à chaque
+-- appel (interrupteurs à chaud). Sans Config/ProductIds (bancs à liste de modules fixe) : comme la PROD.
+local function forceUnboxOn(): boolean
+	local features = Features :: any
+	if features.AdminForceUnbox == true then
+		return true
+	end
+	if features.AdminForceUnboxDev ~= true then
+		return false
+	end
+	local ok, isDev = pcall(function(): any
+		local module = Shared.Config:FindFirstChild("ProductIds")
+		return if module then (require(module :: any) :: any).IsDev else false
+	end)
+	return ok and isDev == true
+end
+
+-- a527 (Cantin, 28/11, pour une vidéo) : l'admin choisit l'objet (tout Config/Items, Secrets compris), le poids
+-- (ItemWeight.IsValidKg : un palier de Config/Weight, 10 000 kg compris) et la mutation d'effet (Config/Mutations ;
+-- la taille suit le poids) de SON prochain colis ; text = Admin.ForceClear efface le choix. Gardé ici par joueur,
+-- rendu une seule fois à StoreHeistService (AdminService.TakeForcedUnbox, accroche posée dans Init).
+handlers.ForceNextUnbox = function(call: Call): (boolean, string)
+	if not forceUnboxOn() then
+		return false, "Force unbox is off (Features.AdminForceUnbox)."
+	end
+	local admin = call.admin
+	local id = nonEmpty(call.text)
+	if id == Admin.ForceClear then
+		local had = forcedUnbox[admin] ~= nil
+		forcedUnbox[admin] = nil
+		return true, if had then "Next box: normal draw" else "Next box: nothing chosen"
+	end
+	local item = if id then Items.ById[id] else nil
+	if item == nil then
+		return false, "Unknown item."
+	end
+	local kg = call.value
+	if not ItemWeight.IsValidKg(kg) then
+		return false, "Weight must be 1 to 10,000 kg."
+	end
+	local mutationId = nonEmpty(call.text2)
+	local effect: string? = nil
+	if mutationId ~= nil then
+		if Mutations.EffectById[mutationId] then
+			effect = mutationId
+		elseif Mutations.SizeById[mutationId] then
+			return false, "Size comes from the weight: pick an effect."
+		else
+			return false, "Unknown mutation."
+		end
+	end
+	local weight = kg :: number
+	local mutation = Mutations.Sanitize({ Size = ItemWeight.SizeMutationFor(weight), Effect = effect })
+	forcedUnbox[admin] = { ItemId = item.Id, Weight = weight, Mutation = mutation }
+	local effectName = if effect then " " .. Mutations.EffectById[effect].DisplayName else ""
+	return true, `Next box: {item.DisplayName} {ItemWeight.Format(weight)}{effectName}`
+end
+
+-- a527 : le choix de `player` pour son prochain colis, effacé à la lecture (une seule ouverture) ; nil sans choix, si
+-- l'interrupteur est coupé ou si le joueur n'est plus admin (le choix est alors effacé aussi). Sans yield.
+function AdminService.TakeForcedUnbox(player: Player): ForcedUnbox?
+	local choice = forcedUnbox[player]
+	if choice == nil then
+		return nil
+	end
+	forcedUnbox[player] = nil
+	if not forceUnboxOn() or not AdminService.IsAdmin(player) then
+		log(`choix du prochain colis de {player.Name} effacé sans servir (interrupteur coupé ou plus admin)`)
+		return nil
+	end
+	log(`{player.Name} ({player.UserId}) : prochain colis imposé, {choice.ItemId} {choice.Weight} kg{if choice.Mutation and choice.Mutation.Effect then " " .. choice.Mutation.Effect else ""}`)
+	return choice
+end
+
+-- a527 : le choix en attente, sans l'effacer (bancs, affichage).
+function AdminService.PeekForcedUnbox(player: Player): ForcedUnbox?
+	return forcedUnbox[player]
+end
+
 -- Juste avant la sauvegarde de départ : profil neuf, achats Robux gardés.
 local function onProfileReleasing(player: Player)
 	if not pendingReset[player] then
@@ -785,6 +873,7 @@ function AdminService.Init()
 	Players.PlayerRemoving:Connect(function(player: Player)
 		groupRanks[player] = nil
 		rankReadAt[player] = nil
+		forcedUnbox[player] = nil -- a527 : le choix du prochain colis part avec le joueur
 		-- pendingReset est vidé par onProfileReleasing (avant ou après ce signal) ; sans profil, au tour suivant.
 		task.defer(function()
 			pendingReset[player] = nil
@@ -794,6 +883,25 @@ function AdminService.Init()
 		onPlayerAdded(player)
 	end
 	task.delay(Admin.RankRefreshSeconds, refreshRanks)
+	-- a527 : accroche admin de StoreHeistService (ForceNextUnbox), cherchée à l'Init (pas de require au chargement : aucun
+	-- cycle ; absente des faux arbres de bancs : la commande garde son choix, rien ne le lit).
+	local heistModule: any = script.Parent:FindFirstChild("StoreHeistService")
+	if heistModule ~= nil then
+		local heist: any = nil
+		local ok, err = pcall(function()
+			heist = require(heistModule)
+		end)
+		local found: any = if ok and type(heist) == "table" then heist.SetAdminContentOverride else nil
+		local function take(player: Player, _drawn: any): any
+			return AdminService.TakeForcedUnbox(player)
+		end
+		if found ~= nil then
+			local setter = found :: (any) -> ()
+			setter(take)
+		else
+			warn(`[AdminService] accroche ForceNextUnbox pas posée : {err}`)
+		end
+	end
 end
 
 function AdminService.Start()

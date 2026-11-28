@@ -287,6 +287,12 @@
 --       Vague 31 : appelée à la sortie de l'objet, pour l'ouvreur, avant tout tirage ;
 --       drawn.Rarity = rareté de la caisse et drawn.ItemId = "" (contenu pas encore tiré, vague 32) ;
 --       un override avec ItemId ou Rarity donne l'objet sorti tel quel, sans tirage ni mutation.
+--   StoreHeistService.SetAdminContentOverride(fn?)  (a527, Cantin 28/11, pour une vidéo)
+--       Accroche admin (AdminService, commande ForceNextUnbox), une seule ; même forme que SetContentOverride, appelée
+--       AVANT elle (et avant SetLuckOverride) pour l'ouvreur, sur un rayon PNJ comme d'événement. override =
+--       { ItemId, Weight, Mutation? } : objet de tout le catalogue (toute zone), poids ItemWeight.IsValidKg, mutation
+--       d'effet (la taille suit le poids). L'objet est traité comme un objet tiré (coups, gains visuels, montée de la
+--       caisse jusqu'à sa rareté, vraie cote) ; la caisse garde la rareté du rayon. nil retire l'accroche.
 --   StoreHeistService.SetLuckOverride(fn?)  (vague 31, a107)
 --       Accroche du tuto : fn(player, drawn) -> number?, appelée au lancement de chaque ouverture sur
 --       le rayon, sans yield ; un nombre fini ≥ 1 remplace la chance tirée ; nil ou une valeur invalide
@@ -395,10 +401,13 @@ export type OverrideInfo = {
 	ItemId: string,
 }
 
--- Ce que l'accroche du tuto remplace (champs absents = inchangés).
+-- Ce que l'accroche du tuto remplace (champs absents = inchangés). a527 : Weight et Mutation ne sont lus que pour
+-- l'accroche admin (SetAdminContentOverride) ; l'accroche du tuto les ignore (jamais de poids tiré ni de mutation).
 export type OverrideResult = {
 	Rarity: string?,
 	ItemId: string?,
+	Weight: number?,
+	Mutation: Mutations.Mutation?,
 }
 
 export type ContentOverride = (player: Player, drawn: OverrideInfo) -> OverrideResult?
@@ -709,6 +718,7 @@ local lastCallNotice: { [Player]: number } = {} -- dernier Notify « les témoin
 local witnessApi: WitnessApi? = nil -- WitnessService, s'il existe (Init)
 
 local contentOverride: ContentOverride? = nil
+local adminOverride: ContentOverride? = nil -- a527 : accroche admin (AdminService, ForceNextUnbox), appelée avant celle du tuto
 local luckOverride: LuckOverride? = nil -- accroche du tuto (a107), voir SetLuckOverride
 local lastRefusal: { [Player]: number } = {}
 local lastGreedy: { [Player]: number } = {} -- dernier message « un seul braquage à la fois »
@@ -2385,6 +2395,61 @@ local function contentFor(player: Player, slot: Slot, base: Content): Content
 	return content
 end
 
+-- a527 (Cantin, 28/11, pour une vidéo) : contenu choisi par l'admin pour son prochain colis (AdminService, commande
+-- ForceNextUnbox), ou nil. Appelée pour l'ouvreur avant l'accroche du tuto, sur un rayon PNJ comme sur un rayon
+-- d'événement. L'accroche (une seule, posée par SetAdminContentOverride) rend le choix une fois puis l'efface ; elle
+-- a déjà tout vérifié, revérifié ici : objet du catalogue (toute zone, Secrets compris), poids dans un palier
+-- (ItemWeight.IsValidKg), mutation d'effet connue ; la taille vient du poids (ItemWeight.SizeMutationFor), comme un
+-- tirage. Un choix invalide est ignoré (avertissement) : le tirage normal.
+local function adminContentFor(player: Player, slot: Slot, boxRarity: string): Content?
+	local override = adminOverride
+	if override == nil then
+		return nil
+	end
+	local store = slot.Store
+	local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = boxRarity, ItemId = "" }
+	local ok, result = pcall(override, player, drawn)
+	if not ok then
+		warn(`[StoreHeistService] accroche SetAdminContentOverride : {result}`)
+		return nil
+	end
+	if result == nil then
+		return nil
+	end
+	local function invalid(reason: string): Content?
+		warn(`[StoreHeistService] choix admin de {player.Name} ignoré : {reason}`)
+		return nil
+	end
+	if type(result) ~= "table" then
+		return invalid(`l'accroche renvoie un {type(result)}, pas une table`)
+	end
+	local item = if type(result.ItemId) == "string" then Items.ById[result.ItemId] else nil
+	if item == nil then
+		return invalid(`objet inconnu ({result.ItemId})`)
+	end
+	local kg = result.Weight
+	local validKg = false
+	pcall(function()
+		validKg = ItemWeight.IsValidKg(kg) == true
+	end)
+	if not validKg or type(kg) ~= "number" then
+		return invalid(`poids invalide ({kg})`)
+	end
+	local wanted = result.Mutation
+	local effect = if type(wanted) == "table" then wanted.Effect else nil
+	if effect ~= nil and Mutations.EffectById[effect] == nil then
+		return invalid(`mutation inconnue ({effect})`)
+	end
+	local okSize, size = pcall(ItemWeight.SizeMutationFor, kg)
+	local content: Content = {
+		Rarity = item.Rarity,
+		ItemId = item.Id,
+		Mutation = Mutations.Sanitize({ Size = if okSize and type(size) == "string" then size else nil, Effect = effect }),
+		Weight = kg,
+	}
+	return content
+end
+
 -- Ouverture sur le rayon (L-112 ; voir l'en-tête) -------------------------------------------------
 
 -- Payload NPCItem de l'objet `info` sorti du colis de `slot` (prise sur le rayon, ou portage d'office à la fin de
@@ -2718,7 +2783,11 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 	-- Accroche du tuto d'abord, sans tirage : un contenu imposé est l'objet sorti tel quel (voir l'en-tête).
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local imposed: Content? = nil
-	if opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
+	-- a527 : choix de l'admin (ForceNextUnbox) d'abord, sur un rayon d'événement aussi ; poids et mutation compris.
+	local adminContent = if opener then adminContentFor(opener, slot, box.Rarity) else nil
+	if adminContent then
+		imposed = adminContent
+	elseif opener and not store.Event then -- vague 42 : pas d'accroche du tuto sur un rayon d'événement
 		local given = contentFor(opener, slot, pending)
 		if given ~= pending then
 			imposed = given
@@ -2757,7 +2826,8 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		calmWitnesses(store) -- c'était la dernière ouverture en cours dans ce magasin
 	end
 	local mutation = Mutations.Label(final.Mutation)
-	local how = if imposed then " (contenu imposé par le tuto, sans tirage)"
+	local how = if adminContent then " (choix de l'admin, ForceNextUnbox)"
+		elseif imposed then " (contenu imposé par le tuto, sans tirage)"
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	log(`{slot.Id} : l'objet sort, chance ×{luck}, caisse {box.Rarity} → objet {final.Rarity} ({final.ItemId}){how}{if mutation then ", " .. mutation else ""}, réservé {ShelfOpen.ReserveTime} s à {if opener then opener.Name else opening.ByUserId}`)
@@ -3135,7 +3205,14 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	if OpenLuck.V2 then
 		luck = drawLuckV2(player, config.TableLuck, if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil)
 	end
+	-- a527 : choix de l'admin d'abord (ForceNextUnbox), avant les accroches du tuto (ni sa chance ni son objet ne passent
+	-- par-dessus). L'objet choisi est traité comme un objet tiré : coups, gains visuels, montée de la caisse jusqu'à sa
+	-- rareté, vraie cote, carte ITEM SECURED ; seule la chance de l'ouverture reste celle tirée ici.
+	local adminContent = adminContentFor(player, slot, box.Rarity)
 	local forced = luckOverride
+	if adminContent then
+		forced = nil -- a527 : pas de chance du tuto sur un choix de l'admin
+	end
 	local luckForced = false
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
@@ -3148,11 +3225,14 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		end
 	end
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
-	local given = contentFor(player, slot, pending)
+	local given = if adminContent then pending else contentFor(player, slot, pending)
 	local imposed = given ~= pending
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
-	if imposed then
+	if adminContent then
+		content = adminContent
+		drawnRarity = adminContent.Rarity
+	elseif imposed then
 		-- Contenu imposé par le tuto, sans tirage : ni mutation, ni poids tiré.
 		content = { Rarity = given.Rarity, ItemId = given.ItemId, Mutation = nil, Weight = config.TutorialWeight }
 	else
@@ -3319,7 +3399,8 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	task.delay(maxSeconds, function()
 		finishReveal(session, "plafond de temps")
 	end)
-	local how = if imposed then " (contenu imposé par le tuto, sans tirage)"
+	local how = if adminContent then " (choix de l'admin, ForceNextUnbox)"
+		elseif imposed then " (contenu imposé par le tuto, sans tirage)"
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
@@ -4121,6 +4202,11 @@ end
 
 function StoreHeistService.SetLuckOverride(override: LuckOverride?)
 	luckOverride = override
+end
+
+-- a527 : accroche admin (AdminService, ForceNextUnbox), voir adminContentFor.
+function StoreHeistService.SetAdminContentOverride(override: ContentOverride?)
+	adminOverride = override
 end
 
 function StoreHeistService.GetStoreId(model: Instance): string?
