@@ -26,6 +26,12 @@
 --   InventoryState.Decode(text) -> State          l'inverse ; texte absent ou mal formé = état vide,
 --                                                 enregistrement mal formé ignoré
 --   InventoryState.IsSafeId(text) -> boolean      l'identifiant peut-il être écrit tel quel ?
+--   InventoryState.Listed(uid, entry, known) -> boolean
+--       a534 : la règle unique « prend une place de l'inventaire » (Balance.Display.InventoryMax) pour un objet
+--       du profil ni exposé ni au coffre-fort : ItemId connu du catalogue actif (`known`), uid écrivable, et pas
+--       sous antivol posé au sol de la boutique (Spot). Ce sont les objets montrés par l'état (InventoryService),
+--       donc par l'écran d'inventaire et la barre du bas ; DisplayService.HasInventoryRoom compte les mêmes.
+--   InventoryState.Stored(state) -> number        a534 : objets de l'état hors présentoir (le compteur « X / 30 »)
 
 export type ItemEntry = {
 	Uid: string,
@@ -54,6 +60,23 @@ InventoryState.Attribute = "InventoryState"
 
 function InventoryState.IsSafeId(text: any): boolean
 	return type(text) == "string" and string.match(text, SAFE_ID) ~= nil
+end
+
+function InventoryState.Listed(uid: any, entry: any, known: boolean): boolean
+	if not known or type(entry) ~= "table" or not InventoryState.IsSafeId(uid) then
+		return false
+	end
+	return not (entry.AntiTheft == true and entry.Spot ~= nil)
+end
+
+function InventoryState.Stored(state: State): number
+	local stored = 0
+	for _, item in state.Items do
+		if item.Slot == nil then
+			stored += 1
+		end
+	end
+	return stored
 end
 
 local function finite(value: any): boolean

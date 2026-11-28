@@ -1483,14 +1483,8 @@ local function refreshPotions(current: Screen)
 end
 
 local function refreshCounters(current: Screen)
-	local stored, displayed = 0, 0
-	for _, entry in state.Items do
-		if entry.Slot ~= nil then
-			displayed += 1
-		else
-			stored += 1
-		end
-	end
+	local stored = InventoryState.Stored(state) -- a534 : le compte du serveur (InventoryState.Listed)
+	local displayed = #state.Items - stored
 	local unlocked = localPlayer:GetAttribute(SLOTS_ATTRIBUTE)
 	local slots = if type(unlocked) == "number" then unlocked else Balance.Display.StartSlots
 	setText(current.counter, string.format(COUNTER_TEXT, stored, Balance.Display.InventoryMax))
