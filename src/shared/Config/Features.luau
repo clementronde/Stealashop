@@ -386,7 +386,7 @@ local Features = {
 	-- (règle C2 : pas encore de test humain) ; false = la chance d'avant (L-376 : ×1 qui monte jusqu'à la chance tirée).
 	UnboxHitLuck = false,
 	-- a523 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
-	UnboxHitLuckDev = false,
+	UnboxHitLuckDev = true,
 	-- a523 (L-442, Clément 27/11 : « plein de versions en fonction des paliers de luck ») : le compteur « ×N LUCK »
 	-- (BB_ShelfOpen.Row.Luck, BB_UnboxOdds.Odds) prend le style du palier de Clément (Assets/UI/LuckTiers/Tier_NN : dernier
 	-- MinLuck ≤ la chance affichée), au format ×9.99, ×99.9, ×999, ×1.5K, ×250M, ×3.2T ; au passage d'un palier en montée,
