@@ -237,7 +237,13 @@ local function gripOf(size: Vector3): CFrame
 		if large then size.Y / 2 - HeldItem.LargeBelowHand else 0,
 		-(size.Z / 2 + HeldItem.Forward)
 	)
-	return (CFrame.new(offset) * CFrame.Angles(0, math.rad(HeldItem.Yaw), 0)):Inverse()
+	local yaw = CFrame.Angles(0, math.rad(HeldItem.Yaw), 0)
+	if HeldItem.Level then
+		-- a531 (L-500) : même place, objet tourné sur son centre de Pitch (axe X de la main) puis de Roll (axe -Z).
+		local level = CFrame.Angles(math.rad(HeldItem.Pitch), 0, 0) * CFrame.Angles(0, 0, -math.rad(HeldItem.Roll))
+		return (CFrame.new(offset) * level * yaw):Inverse()
+	end
+	return (CFrame.new(offset) * yaw):Inverse()
 end
 
 local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
