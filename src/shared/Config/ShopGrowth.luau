@@ -53,6 +53,9 @@ local ShopGrowth = {
 	-- (sol, murs des côtés, toit) est raccourcie en gardant son écart au fond.
 	BackZone = 4, -- V0
 	BackThickness = 2, -- V0
+	-- a540 (L-509, Clément 27/11) : boutique coupée, une pièce fine du fond est posée BackPieceOffset derrière le
+	-- nouveau fond, hors du plan des bouts coupés des côtés (scintillement). Interrupteur Features.ShopBackPieceOffset.
+	BackPieceOffset = 0.03, -- V0 proposé par Clément (L-509)
 	-- Une pièce plus longue que ClipMinLength qui dépasse le nouveau fond est raccourcie (à InnerInset avant le
 	-- fond si elle ne touchait pas le fond du gabarit : néons du plafond) ; plus courte, elle est retirée si son
 	-- centre est au-delà. Raccourcie à moins de MinLength : retirée.

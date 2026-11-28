@@ -201,6 +201,12 @@ local Features = {
 	ShopInsideBackWall = false,
 	-- a468 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	ShopInsideBackWallDev = true,
+	-- a540 (L-509, Clément 27/11) : boutique coupée, les pièces fines du fond (ShopStageService) sont posées
+	-- ShopGrowth.BackPieceOffset derrière le nouveau fond : plus de scintillement du fond vu de derrière.
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = posées pile sur le fond, comme avant.
+	ShopBackPieceOffset = false,
+	-- a540 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ShopBackPieceOffsetDev = true,
 	-- a426 (L-319, décision de Clément du 23/11) : dans une zone `SafeZone`, la même vitesse pour tous et un léger
 	-- ralenti pour qui porte un objet pris chez un joueur (Balance.SafeZoneSpeed, StatsService). V0 proposé (Cantin,
 	-- 24/11) : true ; false = vitesse de la formule partout et vitesse fixe Carry.StolenItemWalkSpeed, comme avant.
