@@ -599,7 +599,7 @@ local Features = {
 	-- BB_UnboxOdds, repli du code sans lui). Interrupteur PROD (partout) : false (règle C2) ; false = aucune étiquette.
 	BoxZoneTag = false,
 	-- a517 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
-	BoxZoneTagDev = false,
+	BoxZoneTagDev = true, -- a530 (Cantin, 28/11) : rallumé, l'objet est tiré dans la zone de l'étiquette
 	-- a527 (Cantin, 28/11, pour une vidéo) : commande d'admin ForceNextUnbox (Config/Admin, AdminService) : l'admin choisit
 	-- l'objet, le poids et la mutation de SON prochain colis de rayon (StoreHeistService.SetAdminContentOverride, avant
 	-- l'accroche du tuto) ; toute l'ouverture normale se joue. Interrupteur PROD (partout) : false ; false = commande refusée.

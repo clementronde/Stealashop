@@ -1397,7 +1397,7 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			widths[look] = width
 			local landing = landingPoint(from, center, width, taken)
 			table.insert(taken, { Position = landing, Width = width })
-			-- a517 : zone du colis de zone (sa règle, référence = zone du camion) : étiquette « ZONE N » si plus haute.
+			-- a517 : zone du colis de zone (sa règle, référence = zone du camion) : étiquette « ZONE N » si plus haute. a530 : l'objet y est tiré (StoreHeistService.placeBox, reveal).
 			local boxZone = if entry.Rule and ZoneBoxEverywhere and type(ZoneBoxEverywhere.ZoneOf) == "function"
 				then ZoneBoxEverywhere.ZoneOf(entry.Rule, truck.Zone)
 				else nil

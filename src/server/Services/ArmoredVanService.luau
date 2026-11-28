@@ -43,7 +43,7 @@
 --      atteindre 100 %, jamais au changement de palier (a533, Cantin 28/11). Jauge au-dessus
 --      (BB_VanGauge de Clément ou repli). À la casse : 12 colis de la zone du palier (règles NextZone, Zone, BestZone de
 --      Config/Rewards.ZoneBox) au sol sur un rayon d'événement, placés comme ceux du camion (TruckEventService.LandingPoint),
---      ouverts sur place par n'importe qui, chance au moins ×3 (MinLuck), objet de la zone du palier ; annonce « Zone N ».
+--      ouverts sur place par n'importe qui, chance au moins ×3 (MinLuck), objet de la zone du palier (a530 : les 3 NextZone, étiquetés « ZONE N+1 », dans la zone N+1) ; annonce « Zone N » (celle du palier, 9 colis sur 12).
 --
 -- Crochet de test, STUDIO SEULEMENT (barre de commande serveur) :
 --   workspace:SetAttribute("ArmoredVanNow", true)       -- un fourgon tout de suite (même de nuit)
@@ -1068,7 +1068,7 @@ local function breakV2(current: Van)
 			Zone = zone,
 			Spots = spots,
 			Lifetime = lifetime,
-			-- L'objet sort de la zone du palier seulement, comme au camion (les 10 % de zone suivante : retirés, Cantin 27/11).
+			-- L'objet sort de la zone du palier seulement, comme au camion (les 10 % de zone suivante : retirés, Cantin 27/11). a530 : sauf un colis étiqueté « ZONE N+1 », tiré dans cette zone (StoreHeistService.placeBox).
 			NextZoneChance = 0,
 			MinLuck = V2CFG.MinLuck,
 		})

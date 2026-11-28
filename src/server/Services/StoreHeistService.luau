@@ -454,6 +454,8 @@ type ShelfBox = {
 	Landed: boolean, -- false tant que le colis rendu vole vers le rayon
 	StopFlight: (() -> ())?,
 	Opening: Opening?, -- L-112 : en cours d'ouverture ; nil = fermé
+	-- a530 (Cantin, 28/11) : zone écrite « ZONE N » sur le colis (attribut BoxZone), où son objet est tiré ; nil : zone du rayon.
+	Zone: number?,
 }
 
 -- Ce qui décrit un objet sorti d'un colis (L-112), sur son rayon comme une fois porté ou au sol.
@@ -464,6 +466,7 @@ type ItemInfo = {
 	OpenerId: number, -- UserId de l'ouvreur
 	ReservedUntil: number, -- os.clock() : avant, seul l'ouvreur peut le prendre
 	ReservedUntilServer: number, -- la même heure, à l'horloge du serveur (attribut ShelfReservedUntil)
+	Zone: number?, -- a530 : zone de l'objet tiré dans un colis étiqueté (ShelfBox.Zone) ; nil : zone du magasin
 }
 
 -- Objet sorti, posé à la place de son colis (ou en vol de retour vers elle).
@@ -1134,12 +1137,17 @@ end
 -- caisse (le contenu est tiré à la sortie, vague 32). a517 : `boxZone`, zone du colis connue à l'apparition (rayon
 -- d'événement, EventSpot.Zone) : attribut BoxZone si elle est plus haute que celle du rayon (Shared/BoxZoneTag) ; un
 -- rayon PNJ n'a que des colis de sa zone (rien à passer).
+-- a530 (Cantin, 28/11) : l'objet d'un colis étiqueté est tiré dans la zone de l'étiquette (ShelfBox.Zone, reveal) ;
+-- étiquette éteinte ou zone pas plus haute : aucune, l'objet sort de la zone du rayon comme avant.
 local function placeBox(slot: Slot, rarity: string, from: Vector3?, boxZone: number?)
 	local model = makeBoxModel(slot, rarity)
+	local tagZone: number? = nil
 	if BoxZoneTag then
-		model:SetAttribute(BoxZoneTag.Attribute, BoxZoneTag.Shown(boxZone, slot.Store.Zone))
+		local shown = BoxZoneTag.Shown(boxZone, slot.Store.Zone)
+		tagZone = if type(shown) == "number" and Zones[shown] ~= nil then shown else nil
+		model:SetAttribute(BoxZoneTag.Attribute, tagZone)
 	end
-	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
+	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil, Zone = tagZone }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
 	if from == nil then
@@ -2462,7 +2470,7 @@ local function payloadFor(slot: Slot, info: ItemInfo): NPCItemPayload
 		ItemId = content.ItemId,
 		Rarity = content.Rarity,
 		Mutation = content.Mutation,
-		Zone = store.Zone,
+		Zone = info.Zone or store.Zone, -- a530 : zone de l'étiquette pour un colis étiqueté (revenu d'un Secret)
 		StoreId = store.Id,
 		SlotId = slot.Id,
 		Luck = info.Luck,
@@ -2801,7 +2809,12 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		if nextChance then
 			zones = if random:NextNumber() < nextChance and Zones[store.Zone + 1] then { store.Zone + 1 } else { store.Zone }
 		end
-		final, drawnRarity = drawShelfContent(box.Rarity, store.Zone, luck, zones, store.Event, store.SizeOdds, nextChance ~= nil)
+		-- a530 (Cantin, 28/11) : colis étiqueté « ZONE N » (camion, fourgon V2) : l'objet est tiré dans cette zone seule.
+		local itemZone = box.Zone or store.Zone
+		if box.Zone then
+			zones = { box.Zone }
+		end
+		final, drawnRarity = drawShelfContent(box.Rarity, itemZone, luck, zones, store.Event, store.SizeOdds, nextChance ~= nil or box.Zone ~= nil)
 	end
 	box.Model:SetAttribute(ShelfOpenState.StateAttribute, "Revealed")
 	discard(box)
@@ -2820,6 +2833,7 @@ local function reveal(slot: Slot, box: ShelfBox, luck: number)
 		OpenerId = opening.ByUserId,
 		ReservedUntil = os.clock() + ShelfOpen.ReserveTime,
 		ReservedUntilServer = Workspace:GetServerTimeNow() + ShelfOpen.ReserveTime,
+		Zone = if imposed then nil else box.Zone, -- a530 : zone de l'objet d'un colis étiqueté
 	}
 	placeItem(slot, info, nil)
 	if openingCount(store) == 0 then
