@@ -1510,6 +1510,9 @@ end
 local function noteNightBoxes(store: Store)
 	-- a254 : de jour aussi, à partir de Config/Announce.DayBoxMinRarity (nil : coupée).
 	local night = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE) == "Night"
+	if night and Announce.dawnBoxes() then
+		return -- a457 (L-335 point 2) : les colis de la nuit sont annoncés au lever du jour (announceDawnBoxes)
+	end
 	local minimumId = if not night then Announce.dayBoxMinRarity() elseif Unbox.NightBoxAnnounce == true then Unbox.NightBoxMinRarity else nil
 	local minimum = if minimumId then Rarities.ById[minimumId] else nil
 	if store.Event or minimum == nil then
@@ -1528,6 +1531,51 @@ local function noteNightBoxes(store: Store)
 	end
 	if first and #nightBoxes > 0 then
 		task.delay(math.max(Unbox.NightBoxGroupDelay, 0), flushNightBoxes)
+	end
+end
+
+-- a457 (L-335 point 2, Clément 24/11 ; Features.DawnBoxAnnounce / DawnBoxAnnounceDev) : au lever du jour (NightPhase
+-- quitte "Night"), une seule annonce, Config/Announce.DawnBoxHold s (5) : la caisse la plus rare encore posée sur un rayon,
+-- à partir de Unbox.NightBoxMinRarity (à égalité, la zone la plus loin), « A LEGENDARY box is in Zone 6! ». Aucune
+-- caisse assez rare : rien. Rayons d'événement exclus.
+local function announceDawnBoxes()
+	local minimum = if Unbox.NightBoxAnnounce == true then Rarities.ById[Unbox.NightBoxMinRarity] else nil
+	if minimum == nil or not Announce.dawnBoxes() then
+		return
+	end
+	local bestRarity: Rarities.Rarity? = nil
+	local bestStore: Store? = nil
+	for _, store in stores do
+		if not store.Event then
+			for _, slot in store.Slots do
+				local box = slot.Box
+				local rarity = if box then Rarities.ById[box.Rarity] else nil
+				if rarity and rarity.Order >= minimum.Order then
+					local current = bestRarity
+					if
+						current == nil
+						or rarity.Order > current.Order
+						or (rarity.Order == current.Order and bestStore ~= nil and store.Zone > bestStore.Zone)
+					then
+						bestRarity, bestStore = rarity, store
+					end
+				end
+			end
+		end
+	end
+	if bestRarity and bestStore then
+		Announce.dawnBox(bestRarity, bestStore.Zone)
+		log(`annonce du lever du jour : {bestRarity.Id} en zone {bestStore.Zone}`)
+	end
+end
+
+local lastNightPhase: any = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+local function onNightPhaseChanged()
+	local phase = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+	local was = lastNightPhase
+	lastNightPhase = phase
+	if was == "Night" and phase ~= "Night" then
+		announceDawnBoxes()
 	end
 end
 
@@ -4054,6 +4102,9 @@ function StoreHeistService.Init()
 		task.defer(register, instance)
 	end)
 	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unregister)
+	-- a457 (L-335 point 2) : annonce des caisses rares au lever du jour.
+	lastNightPhase = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+	Workspace:GetAttributeChangedSignal(NIGHT_PHASE_ATTRIBUTE):Connect(onNightPhaseChanged)
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
 	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.

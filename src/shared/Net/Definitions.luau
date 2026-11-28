@@ -915,6 +915,11 @@ local List: { RemoteDef } = {
 			{ Name = "detail", Kind = "string", Min = 0, Max = 120 },
 			{ Name = "icon", Kind = "string", Min = 0, Max = 160 },
 			{ Name = "plain", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+			-- a457 (L-335 point 2) : durée à l'écran en s, pour cette annonce seulement (l'aube : Config/Announce.DawnBoxHold) ;
+			-- absente : Config/Announce.Hold.
+			{ Name = "hold", Kind = "number", Min = 0, Max = 30, Optional = true },
+			-- a457 (L-379) : true = sortie qui défile au bout de hold s (Config/Announce.DawnBoxScroll) ; absent : fermeture d'avant.
+			{ Name = "scroll", Kind = "boolean", Optional = true },
 		},
 	},
 	{
@@ -998,6 +1003,15 @@ local List: { RemoteDef } = {
 		Direction = "ServerToClient",
 		Reliable = true,
 		Args = {},
+	},
+	{
+		-- a522 (L-455), absent du tableau 9.4 : un autre joueur vient de ramener un objet en zone safe
+		-- (CelebrationService, à tous sauf lui, au plus un toutes les Config/Announce.ServerWin.Gap s) ; ServerWinController
+		-- joue Heist_ServerWin en 3D à `position` (là où il a passé la ligne safe). Son seulement.
+		Name = "ServerWin",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { { Name = "position", Kind = "Vector3" } },
 	},
 }
 
