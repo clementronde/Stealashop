@@ -354,8 +354,9 @@ local Features = {
 	UnboxClimbMatchesItemDev = true,
 	-- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : pendant l'ouverture d'un colis de
 	-- rayon, la chance tirée est la base, puis des coups font monter la chance (« +0.2 LUCK », séries « x2 STREAK »,
-	-- rarement « SUPER LUCK! ») ; tout est tiré d'avance par le serveur AVANT l'objet, et l'objet est tiré avec la chance
-	-- finale (celle qu'on voit à la fin des coups). Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
+	-- rarement « SUPER LUCK! ») ; a526 : visuel, le tirage garde la chance de base (Cantin 28/11) : les gains sont tirés
+	-- par le serveur après l'objet, qui est tiré avec la chance de base comme interrupteur coupé ; les chances affichées
+	-- (1 IN N, odds) restent la vraie chance. Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
 	-- StoreHeistService.startReveal, Controllers/Reveal/Unbox (BB_UnboxLuckGain). Interrupteur PROD (partout) : false
 	-- (règle C2 : pas encore de test humain) ; false = la chance d'avant (L-376 : ×1 qui monte jusqu'à la chance tirée).
 	UnboxHitLuck = false,
