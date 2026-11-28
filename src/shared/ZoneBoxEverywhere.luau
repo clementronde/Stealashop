@@ -21,6 +21,7 @@
 --   ZoneBoxEverywhere.Odds(rule, reference) -> (zone?, { [RarityId] = pour cent })
 --       zone du colis (ZoneBoxOdds.Zone) et ses chances (ZoneBoxOdds.Chances), lues au moment de l'appel (Fortune Tower)
 --   ZoneBoxEverywhere.DrawRarity(rule, reference, rng) -> (RarityId?, zone?)   une rareté tirée (camion)
+--   ZoneBoxEverywhere.ZoneOf(name, reference) -> zone?   a517 : zone du colis de la règle Rewards.ZoneBox[name]
 
 -- Services de Roblox lus sans lever d'erreur (bancs sans `game`) : absents, ni Studio ni attribut de test.
 local function service(name: string): any
@@ -89,6 +90,13 @@ function ZoneBoxEverywhere.Rule(tier: any): (string?, Rule?)
 		return nil, nil
 	end
 	return name, rule :: Rule
+end
+
+-- a517 : zone du colis de la règle `name` de Config/Rewards.ZoneBox (ZoneBoxOdds.Zone, la même que DrawRarity) ; nil si
+-- la règle est inconnue.
+function ZoneBoxEverywhere.ZoneOf(name: any, reference: number): number?
+	local rule = if type(name) == "string" then (Rewards.ZoneBox :: any)[name] else nil
+	return if type(rule) == "table" then ZoneBoxOdds.Zone(rule :: Rule, reference) else nil
 end
 
 function ZoneBoxEverywhere.Odds(rule: Rule, reference: number): (number?, { [string]: number })

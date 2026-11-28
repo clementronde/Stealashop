@@ -561,6 +561,13 @@ local Features = {
 	DisplayPlaceMoment = false,
 	-- a524 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	DisplayPlaceMomentDev = true,
+	-- a517 (demande de Cantin, 27/11) : étiquette « ZONE N » sur un colis d'une zone plus haute que celle de l'endroit
+	-- (rayon d'événement du camion ou du fourgon) ou, pour un colis offert hors du couloir (roue, cadeaux de temps de jeu),
+	-- que la meilleure zone du joueur (Shared/BoxZoneTag : attribut BoxZone du colis, élément ZoneTag de BB_Box et de
+	-- BB_UnboxOdds, repli du code sans lui). Interrupteur PROD (partout) : false (règle C2) ; false = aucune étiquette.
+	BoxZoneTag = false,
+	-- a517 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	BoxZoneTagDev = true,
 }
 
 export type Features = typeof(Features)

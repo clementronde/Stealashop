@@ -384,7 +384,7 @@ end
 ------------------------------------------------------------------------------
 
 -- a309 : l'ouverture d'un colis de zone offert, lancée après la note de la réclamation (claim).
-type Reveal = { itemId: string, startRarity: string, chance: number, effect: string? }
+type Reveal = { itemId: string, startRarity: string, chance: number, effect: string?, tagZone: number? } -- a517 : tagZone
 
 -- Donne `reward`. Renvoie (true, message, somme d'argent ou 0, ouverture à lancer ou nil) si c'est donné, (false,
 -- raison) si rien n'est donné (la réclamation n'est alors pas notée). Sans yield.
@@ -430,7 +430,7 @@ local function give(player: Player, data: Data, reward: Reward): (boolean, strin
 		local def = Items.ById[itemId]
 		local rarity = if def then Rarities.ById[def.Rarity] else nil
 		local name = if def then Mutations.ItemName(def.DisplayName, mutation) else tostring(itemId)
-		local reveal: Reveal = { itemId = itemId, startRarity = gift.StartRarity, chance = gift.Chance, effect = gift.Effect }
+		local reveal: Reveal = { itemId = itemId, startRarity = gift.StartRarity, chance = gift.Chance, effect = gift.Effect, tagZone = gift.TagZone }
 		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0, reveal
 	elseif kind == "Boost" then
 		local minutes = reward.Minutes or 0
@@ -487,7 +487,7 @@ local function claim(player: Player, data: Data, reward: Reward, source: Source,
 		-- message (a297) ; pas de scène (hors zone safe, coupée…) : le message tout de suite.
 		local shown: Reveal = reveal
 		task.defer(function()
-			local ok2, started = pcall(MonetizationService.StartGiftReveal, player, shown.itemId, shown.startRarity, shown.chance, shown.effect)
+			local ok2, started = pcall(MonetizationService.StartGiftReveal, player, shown.itemId, shown.startRarity, shown.chance, shown.effect, shown.tagZone)
 			if not (ok2 and started == true) then
 				notify(player, message, "Info")
 			end

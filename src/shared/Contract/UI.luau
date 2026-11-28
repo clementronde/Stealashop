@@ -1726,4 +1726,13 @@ for _, screenDef in UI.Screens do
 	end
 end
 
+-- a517 (demande de Cantin, 27/11 ; Shared/BoxZoneTag) : étiquette « ZONE N » d'un colis d'une zone plus haute que l'endroit
+-- (ou, colis offert, que la meilleure zone du joueur). ZoneTag : un TextLabel, ou un GuiObject qui contient un TextLabel
+-- Label ; le code écrit « ZONE 3 » et le montre, ou le cache. Nom proposé à Clément, pas encore livré : facultatif (absent :
+-- une pastille du code au-dessus du billboard).
+for _, billboard in UI.Billboards do
+	if billboard.Name == "BB_Box" or billboard.Name == "BB_UnboxOdds" then
+		table.insert(billboard.Elements, { Path = "ZoneTag", Class = "GuiObject", Optional = true, Note = "« ZONE N » écrit par le repli du code (a517)" })
+	end
+end
 return UI

@@ -98,6 +98,8 @@ local Attributes = {
 		{ Name = "SlotCount", On = "barre UI_Hotbar (TouchSlotCount sur téléphone)", By = "HotbarController" },
 		{ Name = "Q", On = "tuile de UI_SkillTree (avec R : coordonnées hexagonales)", By = "SkillTreeController" },
 		{ Name = "RarityColor", On = "palier Assets/UI/ShopCardBg/<Rareté> (avec BorderColor, IconScale…)", By = "Shared/ShopCardTier" },
+		-- Posé par le code, lu par le client
+		{ Name = "BoxZone", On = "Model d'un colis (tag ShelfBox), posé par le serveur : zone écrite « ZONE N » (a517)", By = "Shared/BoxZoneTag, BoxZoneTagController, RevealController" },
 	} :: { { Name: string, On: string, By: string } },
 }
 

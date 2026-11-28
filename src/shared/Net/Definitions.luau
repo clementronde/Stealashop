@@ -801,6 +801,9 @@ local List: { RemoteDef } = {
 			-- a493 (Cantin, 26/11) : revenu de l'objet ($/s) tel que la boutique le comptera une fois rangé, calculé par le
 			-- serveur (BB_Reveal.Income le montre tel quel) ; absent : le client le calcule comme avant.
 			{ Name = "income", Kind = "number", Min = 0, Optional = true },
+			-- a517 (Cantin, 27/11) : zone écrite « ZONE N » sur le colis offert (Shared/BoxZoneTag, plus haute que la meilleure zone
+			-- du joueur) ; absent : aucune étiquette (le colis d'un rayon la lit dans son attribut BoxZone).
+			{ Name = "boxZone", Kind = "number", Min = 1, Max = 99, Optional = true },
 		},
 	},
 	{
