@@ -1,20 +1,19 @@
 --!nocheck
--- Produits des kits a ~40 triangles (Chef de projet, 27/11 : les 12 interieurs depassaient les 15 000 triangles de 3,5 a
--- 90 fois, presque tout venait des produits fondus ; « vise 40 triangles par produit »). Une union de petits paves qui se
--- chevauchent coute encore des centaines de triangles : ici AUCUNE union, des paves separes (12 triangles chacun, compte exact).
--- Ordre : kit_lib.luau + kit_produits_<zone>.luau (pieces encore separees ; pour Banque et SalleDesCoffres, la sauvegarde
--- ServerStorage/MapBackups/2026-11-26_KitsAvantFusion), puis CE script, A LA PLACE de kits_blocs.luau et kits_fusion.luau.
+-- Produits des kits en paves separes (Chef de projet, 27/11 : 12 interieurs de 52 000 a 1 363 000 triangles pour un budget de
+-- 15 000 ; Clement 27/11 : « Un bloc par article »). Aucune union : 12 triangles par pave, compte exact.
+-- Ordre : kit_lib.luau + kit_produits_<zone>.luau (pieces separees ; Banque, SalleDesCoffres et Bijouterie : sauvegarde
+-- ServerStorage/MapBackups/2026-11-26_KitsAvantFusion), puis CE script (a la place de kits_blocs.luau et kits_fusion.luau).
 -- _G.KITS_SIMPLE_LIST = { "Superette", ... } avant de lancer. Pour chaque produit ENV_* de ServerStorage/Previews/KITS :
---   1. chaque cylindre et chaque boule devient UN pave (pas de prisme a 8 faces : le budget ne le permet pas) ;
---   2. articles = pieces dont les centres (x, z) sont a moins de 0,1 ;
---      un seul article (sac, boite, peluche...) : ses N plus gros paves tels quels (l'ecran Neon d'abord) ;
---      2 a N articles : un pave par article, a la couleur de son etiquette (piece qui l'entoure et pese >= 60 %) ;
---      plus de N articles (rangees, packs) : le contenant (empreinte > 40 % : bac, plateau) garde son pave, puis chaque ligne
---        d'articles (meme z) est coupee en segments de couleur, dans la limite de N paves ;
---   3. le socle plat « Base » (<= 0,12 de haut) est retire ; le plus gros pave devient « Base » (PrimaryPart), pivot inchange.
--- N = 4 par defaut : 48 triangles au plus par produit (quelques rangees a ecrans 60 a 72). Memes noms de produits, meme
--- pivot, emprise egale ou plus petite. Aucun script. Fait le 27/11 sur les 12 magasins. Bijouterie : avant de lancer, chaque
--- joyau (Glass, Reflectance > 0,2) passe en Neon pour etre garde en priorite comme un ecran, puis retrouve son verre apres.
+--   1. chaque cylindre et chaque boule devient UN pave ;
+--   2. le socle plat « Base » (<= 0,12 de haut) est retire ; les contenants (empreinte > 40 % du produit, ou piece longue de
+--      plus de 60 % de la largeur : bac, plateau, barre, rail) gardent leur pave tel quel ;
+--   3. articles = pieces dont les emprises (x, z) se touchent ;
+--      un seul article : ses N plus gros paves tels quels (N = 4 ; l'ecran Neon d'abord) ;
+--      plusieurs articles : UN pave par article (boite englobante), a la couleur de l'article et jamais de son support
+--        (coussin, socle, tissu...) ; ses ecrans Neon en plus, poses juste devant s'ils sont fins et pris dans le pave ;
+--   4. le plus gros pave devient « Base » (PrimaryPart) ; pivot inchange.
+-- Bijouterie : _G.KITS_GEMS = true. Chaque joyau (Glass, Reflectance > 0,2) passe en Neon pour etre garde comme un ecran,
+-- puis retrouve son verre apres. Memes noms, meme pivot, emprise egale ou plus petite. Aucun script.
 local kits = game:GetService("ServerStorage").Previews.KITS
 local function vol(p) return p.Size.X * p.Size.Y * p.Size.Z end
 local function bboxIn(piv, parts)
@@ -39,27 +38,44 @@ local function newBox(src, name, piv, lo, hi, parent, color)
 	return b
 end
 local function foot(piv, p) local lo, hi = bboxIn(piv, { p }) return (hi.X - lo.X) * (hi.Z - lo.Z) end
+local SUPPORT = { "Cushion", "Pillow", "Stand", "Tray", "Rack", "Shelf", "Lining", "Bin", "Holder", "Post", "Foot", "Leg" }
+local function isSupport(p)
+	if p.Material == Enum.Material.Fabric then return true end
+	for _, k in SUPPORT do if p.Name:find(k) then return true end end
+	return false
+end
 local function itemColorSrc(piv, parts)
-	table.sort(parts, function(a, b) return vol(a) > vol(b) end)
-	local big = parts[1]
+	local cand = {}
+	for _, p in parts do if p.Material ~= Enum.Material.Neon and not isSupport(p) then table.insert(cand, p) end end
+	if #cand == 0 then for _, p in parts do if p.Material ~= Enum.Material.Neon then table.insert(cand, p) end end end
+	if #cand == 0 then cand = parts end
+	table.sort(cand, function(a, b) return vol(a) > vol(b) end)
+	local big = cand[1]
 	local fb = foot(piv, big)
-	for i = 2, #parts do
-		local q = parts[i]
+	for i = 2, #cand do
+		local q = cand[i]
 		if vol(q) >= vol(big) * 0.6 and foot(piv, q) > fb * 1.01 then return q end
 	end
 	return big
 end
-local function dominant(piv, its)
-	local count, firstSrc = {}, nil
-	for _, it in its do
-		local src = itemColorSrc(piv, it.parts)
-		firstSrc = firstSrc or src
-		local k = src.Color:ToHex()
-		count[k] = (count[k] or 0) + 1
+local function itemBoxes(piv, parts, m, keep, tag)
+	local solid, glow = {}, {}
+	for _, p in parts do table.insert(if p.Material == Enum.Material.Neon then glow else solid, p) end
+	local slo, shi
+	if #solid > 0 then
+		local src = itemColorSrc(piv, solid)
+		local lo, hi = bboxIn(piv, solid)
+		slo, shi = lo, hi
+		table.insert(keep, newBox(src, tag, piv, lo, hi, m))
 	end
-	local best, bn = nil, -1
-	for k, n in count do if n > bn then best, bn = k, n end end
-	return Color3.fromHex(best), firstSrc
+	if #glow > 0 then
+		local lo, hi = bboxIn(piv, glow)
+		-- ecran fin pris dans le pave : pose juste devant (un joyau epais reste a sa place)
+		if slo and (hi.Z - lo.Z) <= 0.03 and lo.Z > slo.Z - 0.004 and hi.Y <= shi.Y + 0.001 and lo.Y >= slo.Y - 0.001 then
+			local d = hi.Z - lo.Z lo = Vector3.new(lo.X, lo.Y, slo.Z - 0.006 - d) hi = Vector3.new(hi.X, hi.Y, slo.Z - 0.006)
+		end
+		table.insert(keep, newBox(glow[1], tag .. "_Glow", piv, lo, hi, m))
+	end
 end
 local function block1(st)
 	local n = 0
@@ -88,65 +104,45 @@ local function simplify(m, N)
 	for _, p in all do if not (plate and p == base) then table.insert(body, p) end end
 	local mlo, mhi = bboxIn(piv, body)
 	local mfoot = (mhi.X - mlo.X) * (mhi.Z - mlo.Z)
-	local items = {}
+	local holders, rest = {}, {}
 	for _, p in body do
-		local c = piv:PointToObjectSpace(p.Position)
-		local found
-		for _, it in items do if math.abs(it.x - c.X) < 0.1 and math.abs(it.z - c.Z) < 0.1 then found = it break end end
-		if not found then found = { x = c.X, z = c.Z, parts = {} } table.insert(items, found) end
-		table.insert(found.parts, p)
+		local lo, hi = bboxIn(piv, { p })
+		local long = (hi.X - lo.X) > (mhi.X - mlo.X) * 0.6 and (hi.X - lo.X) > 0.8
+		if #body > 2 and p.Material ~= Enum.Material.Neon and ((hi.X - lo.X) * (hi.Z - lo.Z) > mfoot * 0.4 or long) then table.insert(holders, p) else table.insert(rest, p) end
+	end
+	local boxes = {}
+	for i, p in rest do local lo, hi = bboxIn(piv, { p }) boxes[i] = { lo, hi } end
+	local parent = {}
+	for i = 1, #rest do parent[i] = i end
+	local function find(i) while parent[i] ~= i do parent[i] = parent[parent[i]] i = parent[i] end return i end
+	for i = 1, #rest do
+		for j = i + 1, #rest do
+			local a, b = boxes[i], boxes[j]
+			if a[1].X <= b[2].X + 0.01 and b[1].X <= a[2].X + 0.01 and a[1].Z <= b[2].Z + 0.01 and b[1].Z <= a[2].Z + 0.01 then parent[find(i)] = find(j) end
+		end
+	end
+	local groups, order = {}, {}
+	for i, p in rest do
+		local r = find(i)
+		if not groups[r] then groups[r] = {} table.insert(order, r) end
+		table.insert(groups[r], p)
 	end
 	local keep = {}
-	if #items == 1 or #body <= N then
+	local function largest(list)
+		table.sort(list, function(a, b) return vol(a) > vol(b) end)
 		local neon
-		for _, p in body do if p.Material == Enum.Material.Neon and (not neon or vol(p) > vol(neon)) then neon = p end end
-		table.sort(body, function(a, b) return vol(a) > vol(b) end)
+		for _, p in list do if p.Material == Enum.Material.Neon and (not neon or vol(p) > vol(neon)) then neon = p end end
 		if neon then table.insert(keep, neon) end
-		for _, p in body do if #keep >= N then break end if p ~= neon then table.insert(keep, p) end end
-	elseif #items <= N then
-		for i, it in items do
-			local src = itemColorSrc(piv, it.parts)
-			local lo, hi = bboxIn(piv, it.parts)
-			table.insert(keep, newBox(src, "Item" .. i, piv, lo, hi, m))
-		end
+		for _, p in list do if #keep >= N then break end if p ~= neon then table.insert(keep, p) end end
+	end
+	if #order <= 1 and #holders == 0 then
+		largest(body)
 	else
-		local rest = {}
-		for _, it in items do
-			local lo, hi = bboxIn(piv, it.parts)
-			if (hi.X - lo.X) * (hi.Z - lo.Z) > mfoot * 0.4 and #keep < N - 1 then
-				table.insert(keep, newBox(itemColorSrc(piv, it.parts), "Holder" .. (#keep + 1), piv, lo, hi, m))
-			else
-				table.insert(rest, it)
-			end
-		end
-		local lines = {}
-		for _, it in rest do
-			local found
-			for _, L in lines do if math.abs(L.z - it.z) < 0.12 then found = L break end end
-			if not found then found = { z = it.z, items = {} } table.insert(lines, found) end
-			table.insert(found.items, it)
-		end
-		local budget = math.max(1, N - #keep)
-		if #lines > budget then lines = { { z = 0, items = rest } } end
-		local per = math.max(1, math.floor(budget / #lines))
-		for li, L in lines do
-			table.sort(L.items, function(a, b) return a.x < b.x end)
-			local segs = math.min(per, #L.items)
-			for s = 1, segs do
-				local i0 = math.floor((s - 1) * #L.items / segs) + 1
-				local i1 = math.floor(s * #L.items / segs)
-				local its, parts, glow = {}, {}, {}
-				for i = i0, i1 do
-					table.insert(its, L.items[i])
-					for _, p in L.items[i].parts do table.insert(if p.Material == Enum.Material.Neon then glow else parts, p) end
-				end
-				if #parts > 0 then
-					local col, src = dominant(piv, its)
-					local lo, hi = bboxIn(piv, parts)
-					table.insert(keep, newBox(src, "Line" .. li .. "_" .. s, piv, lo, hi, m, col))
-				end
-				if #glow > 0 and #keep < N + 1 then local lo, hi = bboxIn(piv, glow) table.insert(keep, newBox(glow[1], "Glow" .. li .. "_" .. s, piv, lo, hi, m)) end
-			end
+		for _, h in holders do table.insert(keep, h) end
+		if #order == 1 then
+			largest(groups[order[1]])
+		else
+			for k, r in order do itemBoxes(piv, groups[r], m, keep, "Item" .. k) end
 		end
 	end
 	local set = {}
@@ -171,6 +167,13 @@ local lines = {}
 for _, name in _G.KITS_SIMPLE_LIST or {} do
 	local st = kits:FindFirstChild(name)
 	if not st then table.insert(lines, name .. " : absent") continue end
+	if _G.KITS_GEMS then
+		for _, d in st:GetDescendants() do
+			if d:IsA("BasePart") and d.Material == Enum.Material.Glass and d.Reflectance > 0.2 then
+				d:SetAttribute("GemReflect", d.Reflectance) d:SetAttribute("GemTransp", d.Transparency) d.Material = Enum.Material.Neon
+			end
+		end
+	end
 	local rounds = block1(st)
 	local tot, cnt, detail = 0, 0, {}
 	for _, m in st:GetChildren() do
@@ -181,8 +184,17 @@ for _, name in _G.KITS_SIMPLE_LIST or {} do
 			table.insert(detail, short .. " " .. t)
 		end
 	end
+	if _G.KITS_GEMS then
+		for _, d in st:GetDescendants() do
+			if d:IsA("BasePart") and d.Material == Enum.Material.Neon then
+				d.Material = Enum.Material.Glass d.Reflectance = d:GetAttribute("GemReflect") or 0.35
+				d.Transparency = d:GetAttribute("GemTransp") or 0 d.CastShadow = true
+			end
+			if d:IsA("BasePart") then d:SetAttribute("GemReflect", nil) d:SetAttribute("GemTransp", nil) end
+		end
+	end
 	table.sort(detail)
-	table.insert(lines, string.format("%s : %d ronds, %d produits, %.0f tri/produit | %s", name, rounds, cnt, tot / math.max(cnt, 1), table.concat(detail, ", ")))
+	table.insert(lines, string.format("%s : %d ronds, %.0f tri/produit | %s", name, rounds, tot / math.max(cnt, 1), table.concat(detail, ", ")))
 	task.wait()
 end
 return table.concat(lines, "\n")
