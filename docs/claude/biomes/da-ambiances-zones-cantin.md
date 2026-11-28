@@ -77,3 +77,36 @@ Rien à coder : elles sont déjà posées dans la map par nos scripts d'ambiance
 - Le fondu ne doit pas se voir comme un saut quand on court vite d'une zone à l'autre (68 studs/s avec la vitesse max).
 - Le contraste du HUD et des billboards doit rester lisible dans chaque zone, surtout à Londres (sombre) et à Tokyo (violet).
 - Aucune zone ne doit paraître aussi sombre que la vraie nuit : comparer chaque zone avec une capture prise pendant la phase de nuit.
+
+## V1.1 Londres (28/11, après la planche du chef Map)
+
+Sur la planche `Captures/2026-11-28_biomes/Z2_londres_vues/planche_londres_avant_apres.jpg`, la V1 de Londres sortait **bleue et sombre**, presque la nuit. Les causes :
+- une teinte et un brouillard gris-bleu ;
+- la saturation baissée à −0,15 ;
+- le ciel peint, qui reste bleu.
+La V1.1 passe à un **ciel couvert mais clair, gris chaud** : la rue reste bien lisible sous la pluie, et le rouge des bus et des cabines ressort. Vérifiée à l'image, sur une simulation de la vue 2 : `Z2_londres_vues/V2_milieu_rue_ambiance_V1-1_simulation_DA.jpg`.
+
+| Champ | Londres V1 | **Londres V1.1** |
+| --- | --- | --- |
+| Lighting.ClockTime | 15,8 | **14,8** |
+| Lighting.Brightness | 1,9 | **2,3** |
+| Lighting.Ambient | 115,120,125 | **140,138,132** |
+| Lighting.OutdoorAmbient | 140,148,152 | **168,165,158** |
+| Lighting.ColorShift_Top | 210,215,220 | **235,228,215** |
+| Lighting.ExposureCompensation | −0,05 | **0,05** |
+| ColorCorrection.Brightness | −0,02 | **0,02** |
+| ColorCorrection.Contrast | 0,05 | **0,06** |
+| ColorCorrection.Saturation | −0,15 | **−0,05** |
+| ColorCorrection.TintColor | 225,235,232 | **248,242,230** |
+| Atmosphere.Density | 0,4 | **0,36** |
+| Atmosphere.Offset | 0,15 | **0,2** |
+| Atmosphere.Color | 170,180,178 | **205,202,192** |
+| Atmosphere.Decay | 120,130,128 | **175,170,158** |
+| Atmosphere.Glare | 0 | 0 |
+| Atmosphere.Haze | 2,4 | **2,0** |
+| Bloom (Intensity, Size, Threshold) | 0,2 · 18 · 2,4 | **0,18 · 18 · 2,5** |
+| SunRays.Intensity | 0 | 0 |
+
+Elle respecte la règle « jamais la nuit » : ClockTime 14,8, Brightness 2,3, OutdoorAmbient de 164 en moyenne, Exposure 0,05, brume 0,36, bloom 0,18.
+
+**Leçon pour les autres zones** : juger à l'image, pas seulement aux chiffres. Une teinte ou un brouillard à dominante bleue assombrit tout, parce que le ciel peint est déjà bleu. Seul New York a le droit au bleu, et il est plus lumineux (Brightness 1,9).

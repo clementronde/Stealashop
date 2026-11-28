@@ -12,7 +12,7 @@
 --      plus grandes), murets en brique #8a3a2e (chaperon de pierre #c9c2b0 et grilles noires seulement là où rien ne
 --      les cache : le 28/11, les 4 murets sont pris dans les tours d'horloge et les maisons, donc aucun),
 --      liseré de granit à x = 118,9 (coupure nette, pas de marche de 0,4 : décision prise à Tokyo) ;
---   2. grande tour d'horloge de 106 studs en x 175, z 215 (derrière Mansion_3) : pierre miel #c9a86a, 4 cadrans
+--   2. grande tour d'horloge de 170 studs en x 175, z 203 (derrière Mansion_3, ×1,6 pour se voir de la rue) : pierre miel #c9a86a, 4 cadrans
 --      éclairés (Neon faible + PointLight), flèche d'ardoise #5b6470 et pointe dorée ; la grande roue reçoit des
 --      lumières blanches sur ses 32 nacelles ;
 --   3. les 16 maisons Terrace : brique rouge, jaune ou stuc blanc, porte de couleur, baie au premier étage, grille
@@ -22,10 +22,10 @@
 --      portée 14 ; abribus (toit de verre, banc, panneau rouge) à la place de Props/BusStop ; Props/PostBox rangée
 --      (boîtes aux lettres voxel du chef 3D) ; arbres en vert mouillé #3d6b45 ; pluie plus franche (gouttes plus
 --      longues, +20 %) ; brouillard bas gris-vert (≈ 20 particules) ;
---   5. arche de briques #a4372d entre les deux petites tours d'horloge (dessous de 26 à 34 studs), clé de voûte en
---      pierre #c9a86a, 4 lanternes à gaz ;
+--   5. arche de briques en 3 tons sur mortier entre les deux petites tours d'horloge (dessous de 26 à 34 studs),
+--      claveaux et clé de voûte en pierre miel, 4 lanternes à gaz ;
 --   6. places marquées pour le chef 3D (Biome/Places_Chef3D) : 4 boîtes aux lettres, 2 taxis, 6 parapluies ;
---   7. enseignes sans « slop » (da-enseignes-sans-slop.md) : SWEETS et TOYS en lettres voxel, pictos sucette, ours et
+--   7. enseignes sans « slop » (da-enseignes-sans-slop.md) : SWEETS et TOYS dans la police du chef DA (SignLetters sous les SignPart), pictos sucette, ours et
 --      tour d'horloge, faux textes retirés. Charger d'abord tools/clement/zones/lettres_voxel.luau.
 -- Avant : sauvegarde ServerStorage/MapBackups/<date>_Biome_Londres (Street_Londres, sol du Greybox).
 -- À lancer dans Studio (MCP execute_luau, Edit, hors Play).
@@ -144,30 +144,12 @@ for _, p in SL.Ground:GetChildren() do
 		elseif n:match("^Kerb") then paint(p, C.granite, Enum.Material.Plastic)
 		elseif n:match("^Zebra") or n:match("^CentreDash") then paint(p, C.mark)
 		elseif n:match("^ZigZag") then paint(p, C.zigzag)
-		elseif n:match("^Puddle") then paint(p, C.puddle, Enum.Material.Glass, 0.3) end
+		end -- Puddle_* : rangées par sol_passe.luau
 	end
 end
 local F = folder("Sol")
 part(F, "Seuil_Granit", Vector3.new(0.8, 0.05, 91), CFrame.new(118.9, 0.055, 0), C.granite, Enum.Material.Plastic)
--- 10 flaques de plus, plus grandes (7 à 10 studs), hors des passages, des tirets et des anciennes flaques
-do
-	local olds = {}
-	for _, p in SL.Ground:GetChildren() do if p.Name:match("^Puddle") then table.insert(olds, p.Position) end end
-	local rnd = Random.new(2211)
-	local placed, tries = 0, 0
-	while placed < 10 and tries < 400 do
-		tries += 1
-		local d = rnd:NextNumber(7, 10)
-		local x, z = rnd:NextNumber(130, 226), rnd:NextNumber(-42, 42) * 1
-		local ok = math.abs(z) > 3 + d / 2 and math.abs(z) < 44 - d / 2 and (x < 162 - d / 2 or x > 174 + d / 2)
-		if ok then for _, o in olds do if (Vector3.new(x, 0, z) - Vector3.new(o.X, 0, o.Z)).Magnitude < d / 2 + 6 then ok = false break end end end
-		if ok then
-			placed += 1
-			table.insert(olds, Vector3.new(x, 0, z))
-			part(F, "Flaque_" .. placed, Vector3.new(0.04, d, d), CFrame.new(x, 0.03, z) * CFrame.Angles(0, rnd:NextNumber(0, math.pi), math.pi / 2), C.puddle, Enum.Material.Glass, { cyl = true, refl = 0.3, shadow = false })
-		end
-	end
-end
+-- les flaques sont posées par sol_passe.luau (fiche sol du chef DA, 28/11) : plus de disques ici
 -- murets : brique, chaperon de pierre, grilles noires (sauf là où une tour d'horloge les cache)
 local nWalls = 0
 for _, n in { "SideWall_N1", "SideWall_N2", "SideWall_S1", "SideWall_S2" } do
@@ -253,6 +235,23 @@ do
 		part(T, "ClochetonPointe", Vector3.new(0.5, 1.2, 0.5), CFrame.new(X + sx * 10, 89.1, Zc + sz * 10), C.gold, Enum.Material.Plastic)
 	end end
 end
+-- 28/11 (Chef de projet : « un monument qu'on ne voit pas ne sert à rien ») : la tour de 106 était cachée par la façade
+-- haute du Magasin de jouets (36,6 à |z| 53). Mesuré par rayons depuis 8 points du milieu de la rue (x 128 à 226, z 0,
+-- à 6 de haut) : à ×1,6 (170 studs, base de 35) en z 203, cadrans et flèche se voient des 8 points (à ×1,27, 135 studs,
+-- seule la flèche, d'un point). Proportions gardées (ScaleTo), parvis refait, portée des cadrans reprise (ScaleTo ne
+-- l'agrandit pas) ; Tree_N3 et Tree_N4, sous la base, rangés dans la sauvegarde.
+do
+	local parvis = T.Parvis
+	parvis.Parent = B
+	T.WorldPivot = CFrame.new(175, 0, 215)
+	T:ScaleTo(1.6)
+	T:PivotTo(CFrame.new(175, 0, 203))
+	parvis.Size = Vector3.new(56, 1, 35)
+	parvis.CFrame = CFrame.new(175, -0.5, 217.5)
+	parvis.Parent = T
+	for _, l in T:GetDescendants() do if l:IsA("PointLight") then l.Range = 32 end end
+	for _, n in { "Tree_N3", "Tree_N4" } do local t = SL.Buildings:FindFirstChild(n) if t then stash(t) end end
+end
 do
 	local WF = folder("GrandeRoue_Lumieres")
 	for _, cap in SL.ObservationWheel:GetDescendants() do
@@ -329,9 +328,7 @@ for i, m in ipairs(terr) do
 	part(M, "Baie", Vector3.new(bw, 4.2, 1.2), onFace(w / 6, yb + 9.5, 0.6), bc == C.stucco and C.coping or C.stucco, Enum.Material.Plastic)
 	part(M, "BaieVitre", Vector3.new(bw - 0.8, 3.2, 0.2), onFace(w / 6, yb + 9.5, 1.25), C.glassDark, Enum.Material.SmoothPlastic)
 	part(M, "BaieToit", Vector3.new(bw + 0.4, 0.4, 1.6), onFace(w / 6, yb + 11.8, 0.8), C.slate, Enum.Material.Plastic)
-	for k = 0, math.floor(w - 2) do
-		part(M, "Grille", Vector3.new(0.15, 2.6, 0.15), onFace(-w / 2 + 1 + k, yb + 1.3, 1.4), C.iron, Enum.Material.Plastic)
-	end
+	-- barreaux de grille retirés le 28/11 (budget de 4 500 pièces ; presque invisibles depuis la rue) : la lisse reste
 	part(M, "GrilleLisse", Vector3.new(w - 1.6, 0.15, 0.2), onFace(0, yb + 2.6, 1.4), C.iron, Enum.Material.Plastic)
 	-- 3e cheminée au milieu du toit, avec ses pots
 	local roof = m:FindFirstChild("Roof")
@@ -434,48 +431,119 @@ do
 		e.Squash = NumberSequence.new(-4)
 		e.Size = NumberSequence.new(0.5)
 	end
+	-- brouillard bas (chef DA, 28/11) : au ras du sol (3 studs au plus), arrêté à x 205 (25 avant Tokyo), petites
+	-- particules à Transparency 0,9, débit et vie réduits, gris-vert #aab4b0 qui ne prend jamais le rose des néons
 	local mist = SL.Weather:FindFirstChild("MistBank")
 	local src = mist and mist:FindFirstChildOfClass("ParticleEmitter")
-	local p = part(folder("Ambiance"), "BrouillardBas", Vector3.new(100, 1, 88), CFrame.new(178, 0.8, 0), C.fog, Enum.Material.Plastic, { transp = 1, shadow = false })
+	local p = part(folder("Ambiance"), "BrouillardBas", Vector3.new(77, 1, 88), CFrame.new(166.5, 0.5, 0), C.fog, Enum.Material.Plastic, { transp = 1, shadow = false })
 	local f = src and src:Clone() or Instance.new("ParticleEmitter")
 	f.Name = "BrouillardBas"
-	f.Rate = 2
-	f.Lifetime = NumberRange.new(9, 11)
-	f.Speed = NumberRange.new(0.2, 0.6)
-	f.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 16), NumberSequenceKeypoint.new(1, 24) })
-	f.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.86), NumberSequenceKeypoint.new(0.7, 0.86), NumberSequenceKeypoint.new(1, 1) })
-	f.Color = ColorSequence.new(C.fog)
-	f.LightEmission = 0
-	f.Enabled = true
+	f.Rate = 1
+	f.Lifetime = NumberRange.new(5.4, 6.6)
 	f.Parent = p
+	local fogs = { p }
+	if mist then mist.Size = Vector3.new(77, 1, mist.Size.Z) mist.CFrame = CFrame.new(166.5, 0.5, mist.Position.Z) table.insert(fogs, mist) end
+	local gate = SL.Weather:FindFirstChild("GateMistBank")
+	if gate then gate.CFrame = CFrame.new(gate.Position.X, 0.5, gate.Position.Z) table.insert(fogs, gate) end
+	for _, fp in fogs do
+		for _, e in fp:GetChildren() do
+			if e:IsA("ParticleEmitter") then
+				if fp ~= p then e.Rate = math.max(0.5, (e:GetAttribute("BaseRate") or e.Rate) / 2) e:SetAttribute("BaseRate", e:GetAttribute("BaseRate") or e.Rate * 2) end
+				e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 4), NumberSequenceKeypoint.new(1, 6) })
+				e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.9), NumberSequenceKeypoint.new(0.7, 0.9), NumberSequenceKeypoint.new(1, 1) })
+				e.Speed = NumberRange.new(0, 0.3)
+				e.Acceleration = Vector3.zero
+				e.LightEmission = 0
+				e.LightInfluence = 1
+				e.Color = ColorSequence.new(C.fog)
+				e.Enabled = true
+			end
+		end
+	end
 end
 
 ---------------------------------------------------------------- 5. arche d'entrée
+-- v3 du 28/11 (proposition du chef DA, puis budget du Chef de projet : moins de 200 pièces ; v1 et v2 rangées dans la
+-- sauvegarde) : masse en mortier #c9c2b0 en tranches de 4 ; sur les deux faces, un rang de briques = une bande
+-- continue de 0,5 de haut, en relief de 0,1, joints horizontaux de 0,1 (le mortier se voit entre les rangs) ; tons par
+-- rang : rang du bas foncé #6e2c24, puis #8a3a2e et #9a4636 en alternance (2 rangs sur 3 au ton moyen), 3 rangs du haut
+-- clairs ; sous la clé, les rangs s'arrêtent sur les claveaux ; claveaux (23) et clé de voûte en pierre miel
+-- #c9a86a / #b8955a (0,2 de relief), cordon et couronnement en pierre ; 4 lanternes à gaz.
 do
 	local A = Instance.new("Model")
 	A.Name = "ArcheEntree"
 	A.Parent = B
+	local AC = { light = rgb("9a4636"), mid = rgb("8a3a2e"), dark = rgb("6e2c24"), mortar = C.coping, stoneA = rgb("c9a86a"), stoneB = rgb("b8955a") }
+	local S = Enum.Material.SmoothPlastic
 	local X, TH = 124.5, 4
-	local HALF, YS, RISE, YD = 58.9, 26, 8, 36
+	local HALF, YS, RISE, YD, YTOP = 58.9, 26, 8, 36, 42
+	local function yb(z) return YS + RISE * (1 - (z / 59) ^ 2) end
+	local RING = 1.6
 	local z = -HALF
 	while z < HALF - 0.01 do
-		local z1 = math.min(z + 2, HALF)
-		local zc = (z + z1) / 2
-		local yb = YS + RISE * (1 - (zc / 59) ^ 2)
-		part(A, "Voussoir", Vector3.new(TH, YD - yb, z1 - z), CFrame.new(X, (yb + YD) / 2, zc), C.brick, Enum.Material.Plastic)
+		local z1 = math.min(z + 4, HALF)
+		local y0 = math.min(yb(z), yb(z1))
+		part(A, "Mortier", Vector3.new(TH, YD - y0, z1 - z), CFrame.new(X, (y0 + YD) / 2, (z + z1) / 2), AC.mortar, S)
 		z = z1
 	end
-	part(A, "Tablier", Vector3.new(TH, 6, HALF * 2), CFrame.new(X, YD + 3, 0), C.brick, Enum.Material.Plastic)
-	part(A, "Couronnement", Vector3.new(TH + 0.4, 0.8, HALF * 2), CFrame.new(X, YD + 6.4, 0), C.yellowBrick, Enum.Material.Plastic)
-	part(A, "Cordon", Vector3.new(TH + 0.3, 0.5, HALF * 2), CFrame.new(X, YD + 0.25, 0), C.yellowBrick, Enum.Material.Plastic)
-	part(A, "CleDeVoute", Vector3.new(TH + 0.6, 10.6, 2.6), CFrame.new(X, YS + RISE - 1.5 + 5.3, 0), C.yellowBrick, Enum.Material.Plastic)
+	part(A, "MortierTablier", Vector3.new(TH, YTOP - YD, HALF * 2), CFrame.new(X, (YD + YTOP) / 2, 0), AC.mortar, S)
+	local nseg, k = 24, 0
+	for i = 0, nseg - 1 do
+		local za, zb = -HALF + i * (2 * HALF / nseg), -HALF + (i + 1) * (2 * HALF / nseg)
+		local zc = (za + zb) / 2
+		if math.abs(zc) > 1.6 then
+			local ya, ybb = yb(za), yb(zb)
+			local len = math.sqrt((zb - za) ^ 2 + (ybb - ya) ^ 2)
+			local cf = CFrame.new(X, (ya + ybb) / 2, zc) * CFrame.Angles(math.atan2(ybb - ya, zb - za), 0, 0) * CFrame.new(0, RING / 2, 0)
+			k += 1
+			part(A, "Claveau", Vector3.new(TH + 0.4, RING, len - 0.1), cf, (k % 2 == 0) and AC.stoneA or AC.stoneB, S)
+		end
+	end
+	part(A, "CleDeVoute", Vector3.new(TH + 0.6, 4.2, 3.2), CFrame.new(X, yb(0) + 1.5, 0), AC.stoneA, S)
+	part(A, "Cordon", Vector3.new(TH + 0.4, 0.5, HALF * 2), CFrame.new(X, YD + 0.25, 0), AC.stoneB, S)
+	part(A, "Couronnement", Vector3.new(TH + 0.4, 0.8, HALF * 2), CFrame.new(X, YTOP + 0.4, 0), AC.stoneA, S)
+	-- rangs de briques : bande continue par rang et par côté de l'arche (deux bandes sous le sommet des claveaux)
+	local BH, J = 0.5, 0.1
+	local rows = {}
+	local y0 = YS + 0.05
+	while y0 + BH <= YTOP - 0.05 do table.insert(rows, y0) y0 += BH + J end
+	local crown = yb(0) + RING + 0.05 -- au-dessus, les rangs passent d'un bout à l'autre
+	for _, side in { -1, 1 } do
+		local fx = X + side * (TH / 2)
+		local first = true
+		for ri, ya in rows do
+			local yz = ya + BH
+			if not (ya < YD + 0.55 and yz > YD - 0.05) then
+				-- z où le rang quitte les claveaux : yb(z) + RING + 0,05 = ya
+				local spans = {}
+				if ya >= crown then
+					spans = { { -HALF + 0.05, HALF - 0.05 } }
+				else
+					local t = 1 - (ya - RING - 0.05 - YS) / RISE
+					if t > 0 then
+						local zc = 59 * math.sqrt(math.min(t, 1))
+						if zc < HALF - 0.6 then spans = { { -HALF + 0.05, -zc - 0.05 }, { zc + 0.05, HALF - 0.05 } } end
+					end
+				end
+				if #spans > 0 then
+					local tone = (ri > #rows - 3) and "light" or (first and "dark" or ((ri % 3 == 0) and "light" or "mid"))
+					first = false
+					for _, sp in spans do
+						if sp[2] - sp[1] > 0.3 then
+							part(A, "RangBriques", Vector3.new(0.2, BH, sp[2] - sp[1]), CFrame.new(fx, ya + BH / 2, (sp[1] + sp[2]) / 2), AC[tone], S)
+						end
+					end
+				end
+			end
+		end
+	end
 	for _, lz in { -30, -12, 12, 30 } do
-		local yb = YS + RISE * (1 - (lz / 59) ^ 2)
-		part(A, "Chaine", Vector3.new(0.12, 1.2, 0.12), CFrame.new(X, yb - 0.6, lz), C.iron, Enum.Material.Plastic)
-		part(A, "LanterneChapeau", Vector3.new(1.1, 0.35, 1.1), CFrame.new(X, yb - 1.35, lz), C.iron, Enum.Material.Plastic)
-		local g = part(A, "Lanterne", Vector3.new(0.8, 1.3, 0.8), CFrame.new(X, yb - 2.2, lz), C.flame, Enum.Material.Neon)
+		local y = yb(lz)
+		part(A, "Chaine", Vector3.new(0.12, 1.2, 0.12), CFrame.new(X, y - 0.6, lz), C.iron, Enum.Material.Plastic)
+		part(A, "LanterneChapeau", Vector3.new(1.1, 0.35, 1.1), CFrame.new(X, y - 1.35, lz), C.iron, Enum.Material.Plastic)
+		local g = part(A, "Lanterne", Vector3.new(0.8, 1.3, 0.8), CFrame.new(X, y - 2.2, lz), C.flame, Enum.Material.Neon)
 		light(g, 14, C.warm, 1)
-		part(A, "LanterneFond", Vector3.new(1.0, 0.25, 1.0), CFrame.new(X, yb - 2.97, lz), C.iron, Enum.Material.Plastic)
+		part(A, "LanterneFond", Vector3.new(1.0, 0.25, 1.0), CFrame.new(X, y - 2.97, lz), C.iron, Enum.Material.Plastic)
 	end
 end
 
@@ -517,21 +585,13 @@ do
 	local FRED = Font.fromEnum(Enum.Font.FredokaOne)
 	local function fredoka(p) for _, t in p:GetDescendants() do if t:IsA("TextLabel") then t.FontFace = FRED end end end
 	-- enseignes des deux magasins
-	for _, sw in { { Z2.STORE_Z2_Confiserie, "SWEETS", rgb("ff6fae") }, { Z2.STORE_Z2_MagasinDeJouets, "TOYS", rgb("f2c14e") } } do
+	for _, sw in { { Z2.STORE_Z2_Confiserie, "SWEETS", rgb("ff5d8f") }, { Z2.STORE_Z2_MagasinDeJouets, "TOYS", rgb("ffd23f") } } do
 		local store, word, col = sw[1], sw[2], sw[3]
 		local sp = store:FindFirstChild("SignPart")
 		if sp then
 			stripGuis(sp)
-			-- centré dans le bandeau entre les deux SignBorder (13,4 à 19,7) : au-dessus, la corniche et les jardinières
-			local yc = sp.Position.Y
-			local b1, b2 = store:FindFirstChild("SignBorder_1", true), store:FindFirstChild("SignBorder_2", true)
-			if b1 and b2 then
-				local up, lo = b1.Position.Y > b2.Position.Y and b1 or b2, b1.Position.Y > b2.Position.Y and b2 or b1
-				yc = ((up.Position.Y - up.Size.Y / 2) + (lo.Position.Y + lo.Size.Y / 2)) / 2
-			end
-			local n = sp.CFrame.LookVector
-			local c = sp.Position + n * (sp.Size.Z / 2)
-			LV.mot(E, word, LV.face(Vector3.new(c.X, yc, c.Z), n), { px = 0.65, couleur = col, nom = "Enseigne_" .. store.Name })
+			-- police du chef DA (da-police-voxel.md) : p = 0,4, modèle SignLetters sous la SignPart
+			LV.motMagasin(store, word, col, { px = 0.5 }) -- p 0,5 sur les SignPart larges (chef DA, 28/11)
 		end
 		for _, nm in { "PanelBoard", "PanelFrame", "BluePlaque", "BluePlaqueRim" } do
 			local p = store:FindFirstChild(nm, true)

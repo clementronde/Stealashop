@@ -7,9 +7,9 @@
 --   1. sol : chaussée #6a5a4f, trottoirs sable #e9c48a, bordures terracotta #d9733f, marquages #fff7e6, double ligne
 --      jaune #ffd23f, bandes de sable au pied des boutiques, ligne de seuil orange à x = 368 (pas de marche de 0,4 :
 --      même décision que Tokyo) ;
---   2. colline à 3 gradins de 94 studs (x 466 à 532, z −188 à −242, derrière les boutiques basses et le studio) et
---      5 lettres « HEIST » blanches de 11 × 18 sur pieds (de 100 à 118), ampoules Neon #ffcc48, buissons secs,
---      2 palmiers ; les tours du sud
+--   2. colline à 4 gradins de 124 studs (x 465 à 541, z −188 à −242, derrière les boutiques basses et le studio) et
+--      « HEIST » dans la police du chef DA (lettres_voxel.luau, à charger avant), crème à contour sombre, 66 × 18,
+--      de 136 à 154, ampoules Neon #ffcc48, buissons secs, 2 palmiers ; les tours du sud
 --      Skyline/Tower_S1, S2, S4 (ni tag ni script) partent dans la sauvegarde ;
 --   3. les 10 boutiques en 3 modèles alternés (enseigne Neon sur toit plat, visière de tuiles, couronne Art déco), stuc
 --      de 5 couleurs, auvents rayés, bandeau d'enseigne Neon ; les 4 remplissages en cabines de plage rayées ; tours du
@@ -34,7 +34,7 @@ local backup = game.ServerStorage.MapBackups:FindFirstChild(os.date("%Y-%m-%d") 
 assert(backup, "faire la sauvegarde avant (MapBackups/<date>_Biome_LosAngeles)")
 
 local C = {
-	asphalt = rgb("6a5a4f"), sand = rgb("e9c48a"), sandLight = rgb("f4d58d"), joint = rgb("d8b27a"), terracotta = rgb("d9733f"),
+	asphalt = rgb("77726a"), sand = rgb("e9c48a"), sandLight = rgb("f4d58d"), joint = rgb("d8b27a"), terracotta = rgb("d9733f"),
 	salmon = rgb("f2b6a0"), mark = rgb("fff7e6"), yellow = rgb("ffd23f"), hill = rgb("c9a46a"), bush = rgb("8a9a5b"),
 	letter = rgb("f7f3e8"), bulb = rgb("ffcc48"), orange = rgb("ff8c42"), rose = rgb("ff5d8f"), pool = rgb("3bc9db"),
 	white = rgb("f7f3e8"), tile = rgb("c8553d"), dark = rgb("16161a"), red = rgb("c42c28"), warm = rgb("ffb070"),
@@ -144,13 +144,14 @@ H.Name = "Colline_HEIST"
 H.Parent = B
 local flip = CFrame.Angles(0, math.pi, 0) -- pente du coin tournée vers la rue (+z)
 -- À l'est (x 466 à 532), derrière les boutiques basses et le studio : en x 420 à 464, Tower_S3 (145 studs) cacherait
--- les lettres. L'Horlogerie (52 studs, au bord de la chaussée) les cache depuis la sortie de Tokyo, quoi qu'on fasse
--- (il faudrait des lettres à plus de 200 studs) ; elles se lisent depuis le trottoir nord et le milieu de la rue.
-local HX = 499
+-- les lettres. L'Horlogerie (52 studs, au bord de la chaussée) cache le bas du ciel depuis la sortie de Tokyo : d'où le
+-- 4e gradin (28/11) et les lettres de 136 à 158.
+local HX = 503 -- 28/11 : colline élargie à 76 (fiche police : environ 75), décalée vers l'est (Tower_S3)
 local tiers = {
-	{ w = 66, h = 36, z0 = -200, z1 = -242, wd = 12 },
-	{ w = 64, h = 30, z0 = -210, z1 = -240, wd = 9 },
-	{ w = 62, h = 28, z0 = -217, z1 = -239, wd = 7 },
+	{ w = 76, h = 36, z0 = -200, z1 = -242, wd = 12 },
+	{ w = 74, h = 30, z0 = -210, z1 = -240, wd = 9 },
+	{ w = 72, h = 28, z0 = -217, z1 = -239, wd = 7 },
+	{ w = 68, h = 30, z0 = -227, z1 = -240, wd = 6 }, -- 28/11 : socle des lettres voxel, sommet 124
 }
 local yb = 0
 for i, t in tiers do
@@ -159,7 +160,7 @@ for i, t in tiers do
 	part(H, "Pente_" .. i, Vector3.new(t.w, t.h, t.wd), CFrame.new(HX, yb + t.h / 2, t.z0 + t.wd / 2) * flip, C.hill, Enum.Material.Plastic, { collide = true, studs = true, wedge = true })
 	yb += t.h
 end
-local top = yb -- 94 : lettres de 100 à 118
+local top = yb -- 124 : lettres voxel de 136 à 158
 -- buissons secs
 local rnd = Random.new(428)
 for i = 1, 10 do
@@ -169,32 +170,48 @@ for i = 1, 10 do
 	part(H, "Buisson_" .. i, Vector3.new(rnd:NextNumber(2, 4), rnd:NextNumber(1.5, 2.5), rnd:NextNumber(2, 3.5)), CFrame.new(rnd:NextNumber(HX - t.w / 2 + 3, HX + t.w / 2 - 3), base + 0.9, rnd:NextNumber(t.z1 + 3, t.z0 - 8)), C.bush, Enum.Material.Plastic)
 end
 -- lettres pixel (12 × 18), barres de 2,4
-local LW, LH, BAR, TH = 11, 18, 2.3, 1.5
-local GLYPH = {
-	H = { { 0, 0, BAR, LH }, { LW - BAR, 0, BAR, LH }, { 0, LH / 2 - BAR / 2, LW, BAR } },
-	E = { { 0, 0, BAR, LH }, { 0, LH - BAR, LW, BAR }, { 0, LH / 2 - BAR / 2, LW * 0.8, BAR }, { 0, 0, LW, BAR } },
-	I = { { LW / 2 - BAR * 0.75, 0, BAR * 1.5, LH }, { LW * 0.2, LH - BAR, LW * 0.6, BAR }, { LW * 0.2, 0, LW * 0.6, BAR } },
-	S = { { 0, LH - BAR, LW, BAR }, { 0, LH / 2, BAR, LH / 2 - BAR }, { 0, LH / 2 - BAR / 2, LW, BAR }, { LW - BAR, BAR, BAR, LH / 2 - BAR }, { 0, 0, LW, BAR } },
-	T = { { 0, LH - BAR, LW, BAR }, { LW / 2 - BAR / 2, 0, BAR, LH } },
-}
-local word = { "H", "E", "I", "S", "T" }
-local gap = 1.5
-local x0 = HX - (#word * LW + (#word - 1) * gap) / 2
-for i, ch in ipairs(word) do
-	local m = Instance.new("Model")
-	m.Name = "Lettre_" .. i .. "_" .. ch
-	m.Parent = H
-	local cx = x0 + (i - 1) * (LW + gap) + LW / 2
-	local yaw = math.rad((i % 2 == 0) and 4 or -4)
-	local base = CFrame.new(cx, top + 6, -218.5) * CFrame.Angles(0, yaw, 0)
-	for _, r in GLYPH[ch] do
-		local bx, by, bw, bh = r[1], r[2], r[3], r[4]
-		part(m, "Barre", Vector3.new(bw, bh, TH), base * CFrame.new(-LW / 2 + bx + bw / 2, by + bh / 2, 0), C.letter, Enum.Material.SmoothPlastic, { collide = true })
+-- buissons pris dans le 4e gradin : posés sur son sommet
+do
+	local t4 = tiers[4]
+	for _, b in H:GetChildren() do
+		if b:IsA("BasePart") and b.Name:match("^Buisson") and math.abs(b.Position.X - HX) < t4.w / 2 and b.Position.Z < t4.z0 + t4.wd and b.Position.Z > t4.z1 and b.Position.Y < top then
+			b.CFrame = b.CFrame + Vector3.new(0, top + b.Size.Y / 2 - b.Position.Y, 0)
+		end
 	end
-	for _, lx in { -LW / 2 + 1.5, LW / 2 - 1.5 } do
-		part(m, "Pied", Vector3.new(0.8, 6.2, 0.8), base * CFrame.new(lx, -3.1, -1.6), C.post, Enum.Material.Plastic)
+end
+-- HEIST dans la police du chef DA (da-police-voxel.md ; lettres_voxel.luau, à charger avant) : cubes de 2 (66 × 18),
+-- crème #f7f3e8, contour sombre, biseau ; chaque lettre est un modèle à part, sur 2 pieds, de biais (±4°), avec sa
+-- barre d'ampoules Neon #ffcc48 ; de 136 à 154, sur le 4e gradin. Vus depuis la sortie de Tokyo (x 368, à 6 de haut,
+-- 15 points) : 12 côté nord, 5 au milieu de la rue, rien depuis le trottoir sud (l'Horlogerie).
+do
+	local LV = _G.LettresVoxel
+	assert(LV and LV.textGrid, "charger d'abord tools/clement/zones/lettres_voxel.luau")
+	local px, bottom, cx, lz = 2.0, 136, HX, -229
+	local word = "HEIST"
+	local _, Wpx = LV.textGrid(word)
+	local col = 0
+	for i = 1, #word do
+		local ch = word:sub(i, i)
+		local gw = #LV.FONT[ch][1]
+		if i > 1 then col += 1 end
+		local center = (col + gw / 2) - Wpx / 2
+		col += gw
+		local yaw = math.rad((i % 2 == 0) and 4 or -4)
+		local frame = LV.face(Vector3.new(cx + center * px, bottom + 9 * px / 2, lz + ((i % 2 == 0) and 0.3 or 0)), CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(0, 0, 1)))
+		local L = Instance.new("Model")
+		L.Name = ("Lettre_%d_%s"):format(i, ch)
+		L.Parent = H
+		LV.mot(L, ch, frame, { px = px, couleur = C.letter, nom = "Mot_" .. ch })
+		local lw = (gw + 2) * px
+		for _, o in { -0.3, 0.3 } do
+			local p = (frame * CFrame.new(o * lw, -9 * px / 2, -1.2)).Position
+			part(L, "Pied", Vector3.new(0.9, bottom - top + 0.5, 0.9), CFrame.new(p.X, (bottom + top) / 2, p.Z), C.post, Enum.Material.Plastic)
+		end
+		part(L, "BarreAmpoules", Vector3.new(lw - px, 0.4, 0.4), frame * CFrame.new(0, -9 * px / 2 - 0.4, 1.0), C.post, Enum.Material.Plastic)
+		for x = -(lw - px) / 2 + 0.6, (lw - px) / 2 - 0.5, 2.2 do
+			part(L, "Ampoule", Vector3.new(0.8, 0.8, 0.8), frame * CFrame.new(x, -9 * px / 2 - 0.4, 1.3), C.bulb, Enum.Material.Neon)
+		end
 	end
-	part(m, "Ampoules", Vector3.new(LW, 0.5, 0.5), base * CFrame.new(0, -0.6, 1.1), C.bulb, Enum.Material.Neon)
 end
 -- 3 palmiers sur et autour de la colline (copies d'un palmier du quartier)
 local pb = DL.Palms:FindFirstChild("Palm_B1")

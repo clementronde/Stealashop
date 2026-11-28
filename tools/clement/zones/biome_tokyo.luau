@@ -163,7 +163,7 @@ local lanterns = 0
 for i, f in floors do
 	local w, h = f.w, f.h
 	local m = Instance.new("Model")
-	m.Name = "Floor_" .. i
+	m.Name = "PagodaFloor_" .. i -- pas « Floor_n » : le ContractChecker le prend pour l'étage du gabarit PLOT_Shop
 	m.Parent = PG
 	part(m, "Body", Vector3.new(w, h, w), CFrame.new(cx, y + h / 2, cz), C.paper, Enum.Material.Plastic, { collide = true, studs = true })
 	for _, sx in { -1, 1 } do for _, sz in { -1, 1 } do
