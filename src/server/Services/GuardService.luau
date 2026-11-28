@@ -435,6 +435,7 @@ type Guard = {
 	patrol: { Vector3 }, -- points de ronde de sa zone, dans l'ordre (vide le jour)
 	patrolIndex: number, -- point visé
 	patrolStep: number, -- +1 ou −1 : sens de l'aller-retour
+	patrolBlocked: { [string]: boolean }?, -- a529 (L-494) : points de ronde de jour déjà dits injoignables (sortie une fois)
 	pauseUntil: number, -- fin de la pause au point de ronde ; 0 = en marche
 	onKnock: ((player: Player) -> ())?, -- après le coup (la nuit : renvoi chez lui)
 	nextScanAt: number, -- prochain repérage (vigile de nuit)
@@ -3492,9 +3493,15 @@ local function patrolStep(guard: Guard, now: number)
 		return
 	end
 	local goal = guard.patrol[guard.patrolIndex]
-	if flat(goal - position).Magnitude <= ARRIVE_DISTANCE then
+	local day = if guard.kind == "Day" then GuardService._DayPatrol else nil
+	-- a529 (L-494, Play du lot 3 : les 12 vigiles de jour « bloqués sur leur ronde » toutes les ~10 s) : le jour,
+	-- arrivée à l'échelle du vigile (ARRIVE_DISTANCE × son échelle, 4,5 studs à 1,5 : collé au rayon, son centre
+	-- restait à plus de 3 studs du point), et un vigile arrêté près du point (arrivée + son rayon d'agent) y est arrivé.
+	local arriveDistance = if day then ARRIVE_DISTANCE * math.max(guard.scale, 1) else ARRIVE_DISTANCE
+	local distance = flat(goal - position).Magnitude
+	local stuck = (position - guard.progressPos).Magnitude < 1 and now - guard.progressAt >= RETURN_STUCK_TIME
+	if distance <= arriveDistance or (day and stuck and distance <= arriveDistance + guard.agentRadius) then
 		stop(guard)
-		local day = if guard.kind == "Day" then GuardService._DayPatrol else nil
 		if count > 1 then
 			guard.pauseUntil = now + (if day then day.Pause() else Night.PatrolPause)
 			guard.anims:Stop("Walk")
@@ -3509,7 +3516,24 @@ local function patrolStep(guard: Guard, now: number)
 	if (position - guard.progressPos).Magnitude >= 1 then
 		guard.progressPos = position
 		guard.progressAt = now
-	elseif now - guard.progressAt >= RETURN_STUCK_TIME then
+	elseif stuck and day then
+		-- a529 (L-494) : point injoignable, dit une seule fois par vigile et par point, et retiré de sa ronde (s'il
+		-- en reste au moins 2 autres) ; l'index visé reste, nextPatrolPoint passe au point qui suivait.
+		local key = `{math.round(goal.X)},{math.round(goal.Z)}`
+		local blocked = guard.patrolBlocked or {}
+		guard.patrolBlocked = blocked
+		local removed = count > 2
+		if not blocked[key] then
+			blocked[key] = true
+			log(`{guard.label} : point de ronde ({key}) injoignable{if removed then ", retiré de sa ronde" else ", point suivant"}`)
+		end
+		if removed then
+			table.remove(guard.patrol, guard.patrolIndex)
+			guard.patrolIndex -= 1
+		end
+		nextPatrolPoint(guard, now)
+		return
+	elseif stuck then
 		log(`{guard.label} : bloqué sur sa ronde, point suivant`)
 		nextPatrolPoint(guard, now)
 		return
@@ -3522,7 +3546,17 @@ local function patrolStep(guard: Guard, now: number)
 	local from = guard.root.Position
 	local to = goal + Vector3.new(0, guard.rootHeight, 0)
 	local knee = Vector3.new(0, guard.rootHeight - KNEE_HEIGHT, 0)
-	if clearLine(from, to) and clearLine(from - knee, to - knee) then
+	-- a529 (L-494) : le jour, ses flancs aussi (0,75 × son rayon d'agent, comme farthestReachable) : le vigile à
+	-- l'échelle 1,5 ne coupe plus le coin d'un rayon en allant tout droit, il prend le chemin.
+	local side = Vector3.zero
+	local offset = flat(to - from)
+	if day and offset.Magnitude > 1e-3 then
+		side = Vector3.new(-offset.Z, 0, offset.X).Unit * (0.75 * guard.agentRadius)
+	end
+	if clearLine(from, to) and clearLine(from - knee, to - knee)
+		and (side == Vector3.zero or (clearLine(from + side, to + side) and clearLine(from - side, to - side)
+			and clearLine(from + side - knee, to + side - knee) and clearLine(from - side - knee, to - side - knee)))
+	then
 		guard.waypoints = nil
 		moveTo(guard, goal)
 		return
@@ -3707,7 +3741,19 @@ GuardService._ResumePatrol = function(guard: Guard, now: number): boolean
 	endChase(guard)
 	releaseFollow(guard)
 	if #guard.patrol == 0 then
-		guard.patrol = day.Points(store, guard.home)
+		-- a529 (L-494) : points gardés à l'écart des meubles, à la largeur du vigile (sans les vigiles ni les joueurs).
+		local exclude: { Instance } = { getActiveFolder() }
+		for _, player in Players:GetPlayers() do
+			if player.Character then
+				table.insert(exclude, player.Character)
+			end
+		end
+		guard.patrol = day.Points(store, guard.home, {
+			radius = 0.75 * guard.agentRadius,
+			height = guard.rootHeight, -- jusqu'à son centre : rayons et comptoirs, jamais une lampe au plafond
+			exclude = exclude,
+			spacing = ARRIVE_DISTANCE * math.max(guard.scale, 1) + 1, -- son arrivée de jour (patrolStep), plus 1 stud
+		})
 	end
 	guard.patrolIndex = 1
 	guard.patrolStep = 1
