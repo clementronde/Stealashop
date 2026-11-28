@@ -262,9 +262,9 @@ local Products: { Product } = {
 	-- et textes. Vague 73 (a253, L-240 point 2) : icône UI_Icon_DP_Luck3, celle de la carte SERVER LUCK de Clément
 	-- (Luck3 n'est pas en vente, Ready = false : pas deux offres à la même icône tant qu'il le reste).
 	-- a476 (L-375, Clément 25/11 : « les chances durent 30 minutes ») : 30 min au lieu de 15 (LuckMinutes et Effect).
-	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 30, DisplayName = "×2 Server Luck", Effect = "×2 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 30, DisplayName = "×4 Server Luck", Effect = "×4 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
-	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 30, DisplayName = "×8 Server Luck", Effect = "×8 luck for the whole server, 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck2", Id = 0, Tab = "Boosts", Order = 8, Price = 149, Ready = SERVER_LUCK, CardColor = Color3.fromHex("3FC1FF"), Luck = 2, LuckMinutes = 30, DisplayName = "×2 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck4", Id = 0, Tab = "Boosts", Order = 9, Price = 399, Ready = SERVER_LUCK, CardColor = Color3.fromHex("B15CFF"), Luck = 4, LuckMinutes = 30, DisplayName = "×4 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
+	{ Key = "ServerLuck8", Id = 0, Tab = "Boosts", Order = 10, Price = 999, Ready = SERVER_LUCK, CardColor = Color3.fromHex("FFB21A"), Luck = 8, LuckMinutes = 30, DisplayName = "×8 Server Luck", Effect = "Whole server · 30 min", Icon = "UI_Icon_DP_Luck3" },
 }
 
 -- Vague 63 (L-196 point 3, L-204) : les boutons en situation du HUD (Config/Boosts) aussi dans l'onglet Boosts.
@@ -528,6 +528,29 @@ function Monetization.OpenNowTier(remaining: number): OpenNowTier?
 		end
 	end
 	return tiers[#tiers]
+end
+
+-- a520 (L-410) : E sur son objet encore sous antivol propose-t-il Open Now ? Features.OpenNowOnLocked (partout) ou
+-- OpenNowOnLockedDev (jeu DEV et TEST), lus à chaque appel (surcharges sans republier, Shared/LiveFeatures).
+function Monetization.OpenNowOnLocked(): boolean
+	local features = Features :: any
+	return features.OpenNowOnLocked == true or (features.OpenNowOnLockedDev == true and ProductIds.IsDev == true)
+end
+
+-- a520 (L-410) : le palier d'Open Now que E propose pour un objet qui attend encore `remaining` s, ou nil (rien de
+-- proposé) : boutique Robux allumée (Features.RobuxShop), OpenNowOnLocked, achats permis sur ce serveur (pas le jeu
+-- TEST), Open Now codé (Ready) et un palier créé (Id ≠ 0) au-delà de OpenNow.MinRemaining. Même règle côté client
+-- (invite) et serveur (fenêtre d'achat, MonetizationService), qui seul décide.
+function Monetization.LockedSkipTier(remaining: number): OpenNowTier?
+	if (Features :: any).RobuxShop ~= true or not Monetization.OpenNowOnLocked() or Monetization.PurchasesDisabled then
+		return nil
+	end
+	local product = ProductByKey.OpenNow
+	if product == nil or not product.Ready then
+		return nil
+	end
+	local tier = Monetization.OpenNowTier(remaining)
+	return if tier and tier.Id ~= 0 then tier else nil
 end
 
 -- a485 (L-351 question 2) : multiplicateur des gains du tapis venu des gamepasses ×2 Training (×4 Training) et ×2 Speed,

@@ -354,6 +354,14 @@ local Net = require(Shared.Net.Net)
 local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local OpenLuck = require(Shared.OpenLuck) -- a476 (L-374) : formule de la chance d'une ouverture
+-- a517 : étiquette « ZONE N » d'un colis d'une zone plus haute (Shared/BoxZoneTag) ; protégé : absent (faux arbre
+-- d'un banc), aucune étiquette.
+local BoxZoneTag: any = (function(): any
+	local ok, module = pcall(function(): any
+		return require(Shared.BoxZoneTag)
+	end)
+	return if ok then module else nil
+end)()
 local Features = require(Shared.Config.Features)
 -- a241 : Chase.ChaseOnEmptyExit ; Config/Chase absent (bancs à arbre partiel) : la règle d'avant.
 local Chase: any = if Shared.Config:FindFirstChild("Chase") then require(Shared.Config.Chase) :: any else {}
@@ -1113,9 +1121,14 @@ local function discard(box: ShelfBox)
 end
 
 -- Pose un colis sur le rayon vide `slot`, en vol depuis `from` s'il est donné. `rarity` : rareté de la
--- caisse (le contenu est tiré à la sortie, vague 32).
-local function placeBox(slot: Slot, rarity: string, from: Vector3?)
+-- caisse (le contenu est tiré à la sortie, vague 32). a517 : `boxZone`, zone du colis connue à l'apparition (rayon
+-- d'événement, EventSpot.Zone) : attribut BoxZone si elle est plus haute que celle du rayon (Shared/BoxZoneTag) ; un
+-- rayon PNJ n'a que des colis de sa zone (rien à passer).
+local function placeBox(slot: Slot, rarity: string, from: Vector3?, boxZone: number?)
 	local model = makeBoxModel(slot, rarity)
+	if BoxZoneTag then
+		model:SetAttribute(BoxZoneTag.Attribute, BoxZoneTag.Shown(boxZone, slot.Store.Zone))
+	end
 	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
@@ -1510,6 +1523,9 @@ end
 local function noteNightBoxes(store: Store)
 	-- a254 : de jour aussi, à partir de Config/Announce.DayBoxMinRarity (nil : coupée).
 	local night = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE) == "Night"
+	if night and Announce.dawnBoxes() then
+		return -- a457 (L-335 point 2) : les colis de la nuit sont annoncés au lever du jour (announceDawnBoxes)
+	end
 	local minimumId = if not night then Announce.dayBoxMinRarity() elseif Unbox.NightBoxAnnounce == true then Unbox.NightBoxMinRarity else nil
 	local minimum = if minimumId then Rarities.ById[minimumId] else nil
 	if store.Event or minimum == nil then
@@ -1528,6 +1544,51 @@ local function noteNightBoxes(store: Store)
 	end
 	if first and #nightBoxes > 0 then
 		task.delay(math.max(Unbox.NightBoxGroupDelay, 0), flushNightBoxes)
+	end
+end
+
+-- a457 (L-335 point 2, Clément 24/11 ; Features.DawnBoxAnnounce / DawnBoxAnnounceDev) : au lever du jour (NightPhase
+-- quitte "Night"), une seule annonce, Config/Announce.DawnBoxHold s (5) : la caisse la plus rare encore posée sur un rayon,
+-- à partir de Unbox.NightBoxMinRarity (à égalité, la zone la plus loin), « A LEGENDARY box is in Zone 6! ». Aucune
+-- caisse assez rare : rien. Rayons d'événement exclus.
+local function announceDawnBoxes()
+	local minimum = if Unbox.NightBoxAnnounce == true then Rarities.ById[Unbox.NightBoxMinRarity] else nil
+	if minimum == nil or not Announce.dawnBoxes() then
+		return
+	end
+	local bestRarity: Rarities.Rarity? = nil
+	local bestStore: Store? = nil
+	for _, store in stores do
+		if not store.Event then
+			for _, slot in store.Slots do
+				local box = slot.Box
+				local rarity = if box then Rarities.ById[box.Rarity] else nil
+				if rarity and rarity.Order >= minimum.Order then
+					local current = bestRarity
+					if
+						current == nil
+						or rarity.Order > current.Order
+						or (rarity.Order == current.Order and bestStore ~= nil and store.Zone > bestStore.Zone)
+					then
+						bestRarity, bestStore = rarity, store
+					end
+				end
+			end
+		end
+	end
+	if bestRarity and bestStore then
+		Announce.dawnBox(bestRarity, bestStore.Zone)
+		log(`annonce du lever du jour : {bestRarity.Id} en zone {bestStore.Zone}`)
+	end
+end
+
+local lastNightPhase: any = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+local function onNightPhaseChanged()
+	local phase = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+	local was = lastNightPhase
+	lastNightPhase = phase
+	if was == "Night" and phase ~= "Night" then
+		announceDawnBoxes()
 	end
 end
 
@@ -1744,7 +1805,8 @@ local function shutterBlocker(store: Store): string?
 	if guards then
 		for _, guard in guards:GetChildren() do
 			local root = if guard:IsA("Model") then guard:FindFirstChild("HumanoidRootPart") else nil
-			if root and root:IsA("BasePart") and inside(bounds, root.Position) then
+			-- a518 (L-438) : le vigile qui fait sa ronde dans le magasin (attribut GuardPatrol, GuardService) y reste.
+			if root and root:IsA("BasePart") and inside(bounds, root.Position) and guard:GetAttribute("GuardPatrol") ~= true then
 				return `vigile {guard.Name}`
 			end
 		end
@@ -1834,7 +1896,8 @@ local function curtainBlocker(store: Store): string?
 			-- Un vigile qui rentre et qui est déjà dans le volume Bounds est passé derrière le rideau : il ne
 			-- le traversera plus (celui qui vient d'attraper le voleur dans le magasin, Cantin 2026-11-11).
 			if root and root:IsA("BasePart") and distanceTo(bounds, root.Position) <= CURTAIN_GUARD_MARGIN
-				and not (table.find(returning, root) ~= nil and inside(bounds, root.Position)) then
+				and not (table.find(returning, root) ~= nil and inside(bounds, root.Position))
+				and guard:GetAttribute("GuardPatrol") ~= true then -- a518 (L-438) : la ronde du magasin ne retient rien
 				return `vigile {guard.Name} dans le magasin`
 			end
 		end
@@ -3073,11 +3136,13 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		luck = drawLuckV2(player, config.TableLuck, if config.EventLuck then Workspace:GetAttribute("LiveEventShelfLuck") else nil)
 	end
 	local forced = luckOverride
+	local luckForced = false
 	if forced then
 		local drawn: OverrideInfo = { StoreId = store.Id, SlotId = slot.Id, Zone = store.Zone, Rarity = box.Rarity, ItemId = "" }
 		local ok, value = pcall(forced, player, drawn)
 		if ok and type(value) == "number" and value >= 1 and value < math.huge then
 			luck = value
+			luckForced = true -- a523 : chance imposée par le tuto, aucun gain des coups par-dessus
 		elseif not ok then
 			warn(`[StoreHeistService] accroche SetLuckOverride : {value}`)
 		end
@@ -3085,6 +3150,35 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 	local pending: Content = { Rarity = box.Rarity, ItemId = "", Mutation = nil }
 	local given = contentFor(player, slot, pending)
 	local imposed = given ~= pending
+	-- a523 (L-462, Shared/UnboxPlan.hitLuck) : les gains des coups tirés ici, d'avance et AVANT l'objet ; l'objet, son
+	-- poids et ses mutations sont tirés avec la chance finale (base × (1 + gains), UnboxPlan.hitsFinal), celle que les
+	-- joueurs voient à la fin des coups (règle de Roblox : la chance affichée est la vraie). La base (chance tirée) va
+	-- dans le plan avec les gains. Jamais sur un contenu ou une chance imposés (tuto), ni sans plan à montrer.
+	local baseLuck = luck
+	local hits: { string }? = nil
+	local hitModule: any = Shared:FindFirstChild("UnboxPlan")
+	if not imposed and not luckForced and hitModule and (Unbox :: any).New and (Unbox :: any).New.Enabled == true and luck < 1e6 then
+		local ok, drawnHits, final = pcall(function(): (any, any)
+			local UnboxPlan = require(hitModule) :: any
+			if not UnboxPlan.hitLuck() then
+				return nil, nil
+			end
+			local list = UnboxPlan.hitsDraw(function(): number
+				return random:NextNumber()
+			end)
+			baseLuck = UnboxPlan.planLuck(luck)
+			return list, UnboxPlan.hitsFinal(baseLuck, list)
+		end)
+		if ok and type(drawnHits) == "table" and type(final) == "number" and final >= 1 and final < math.huge then
+			hits = drawnHits
+			luck = final
+		else
+			baseLuck = luck
+			if not ok then
+				warnOnce("unbox.hits", `gains des coups impossibles ({drawnHits}) : chance tirée seule`)
+			end
+		end
+	end
 	local content: Content? = nil
 	local drawnRarity = box.Rarity
 	if imposed then
@@ -3191,9 +3285,13 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 			upgrades, climb = UnboxPlan.shelfClimb(box.Rarity, final.Rarity, upgrades)
 			-- a462 (L-376) : la chance de l'ouvreur va dans le plan (« ×N LUCK » pendant les coups), interrupteur allumé.
 			local planLuck: number? = if UnboxPlan.luckClimbs() == true then luck else nil
+			-- a523 (L-462) : avec les gains des coups, la base et les gains (le client montre la base, puis chaque gain).
+			if hits then
+				planLuck = baseLuck
+			end
 			local drawn = UnboxPlan.draw(final.Rarity, function(n: number): number
 				return 1 + math.floor(random:NextNumber() * n)
-			end, box.Rarity, upgrades, odds, climb, planLuck)
+			end, box.Rarity, upgrades, odds, climb, planLuck, hits)
 			local parsed = UnboxPlan.parse(drawn)
 			return drawn, UnboxPlan.serverMaxSeconds(final.Rarity, sizeClass, if parsed then #parsed.Steps else nil)
 		end)
@@ -3221,7 +3319,7 @@ local function startReveal(player: Player, slot: Slot, box: ShelfBox)
 		elseif drawnRarity ~= final.Rarity then ` (tirée : {drawnRarity}, aucun objet nulle part)`
 		else ""
 	local mutation = Mutations.Label(final.Mutation)
-	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
+	log(`{player.Name} ouvre la caisse {box.Rarity} {slot.Name} de {store.Id} : cinématique {id}, chance ×{luck}{if hits then ` (base ×{baseLuck}, gains des coups {table.concat(hits)})` else ""}, objet {final.Rarity} ({final.ItemId}){how}, {weight} kg, taille ×{scale}, classe {sizeClass}{if mutation then ", " .. mutation else ""}, {maxSeconds} s au plus{if plan then `, plan {plan}` else ""}`)
 end
 
 -- RevealDone(revealId) : l'ouvreur a fini de voir sa cinématique. Seule la sienne, en cours ; sinon ignoré.
@@ -3798,6 +3896,7 @@ export type EventSpot = {
 	Tier: string?, -- vague 76 : ignoré (le temps de maintien suit la rareté du colis, ShelfBoxes.GrabTime)
 	Rarity: string, -- rareté de la caisse (BOX_<Rareté>), tirée par l'appelant
 	From: Vector3?, -- départ d'un vol jusqu'au point (placeBox), sinon posé tout de suite
+	Zone: number?, -- a517 : zone du colis (règle de colis de zone) : étiquette « ZONE N » si plus haute que Zone du rayon
 }
 
 export type EventShelfOptions = {
@@ -3922,7 +4021,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 	model.Parent = Workspace
 	for index, slot in store.Slots do
 		local spot = options.Spots[index]
-		placeBox(slot, spot.Rarity, spot.From)
+		placeBox(slot, spot.Rarity, spot.From, spot.Zone)
 	end
 	task.delay(options.Lifetime, function()
 		removeEventStore(store, `fin de sa durée de vie ({options.Lifetime} s)`)
@@ -4052,6 +4151,9 @@ function StoreHeistService.Init()
 		task.defer(register, instance)
 	end)
 	CollectionService:GetInstanceRemovedSignal(STORE_TAG):Connect(unregister)
+	-- a457 (L-335 point 2) : annonce des caisses rares au lever du jour.
+	lastNightPhase = Workspace:GetAttribute(NIGHT_PHASE_ATTRIBUTE)
+	Workspace:GetAttributeChangedSignal(NIGHT_PHASE_ATTRIBUTE):Connect(onNightPhaseChanged)
 	WindowService.OnBroken(onBroken)
 	WindowService.OnRebuilt(onRebuilt)
 	-- Accès protégé : les faux WindowService des bancs n'ont pas tous AddHitGate.

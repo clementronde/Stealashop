@@ -685,6 +685,12 @@ local List: { RemoteDef } = {
 			-- a502 (Cantin, 26/11) : revenu de l'objet ($/s, entier, mutation et poids compris, Formulas.RoundIncome)
 			-- calculé par le serveur ; la carte « ITEM SECURED! » le montre tel quel ; absent : le client le calcule.
 			{ Name = "income", Kind = "int", Min = 0, Optional = true },
+			-- a521 (L-405, bug du Play du lot 1) : poids de l'objet (kg, celui du profil) ; la carte l'écrit dans
+			-- Card.Weight (Shared/ItemWeight.Format) ; absent (objet du tuto, ancien serveur) : Weight vide.
+			{ Name = "weight", Kind = "number", Min = 0, Optional = true },
+			-- a521 (L-405, Features.SecuredCardV2) : coup de chance (Shared/SecuredTier.LuckyFor, calculé par le serveur) :
+			-- la carte passe au grand palier, « LUCKY! » ; absent : false.
+			{ Name = "lucky", Kind = "boolean", Optional = true },
 		},
 	},
 	{
@@ -795,6 +801,9 @@ local List: { RemoteDef } = {
 			-- a493 (Cantin, 26/11) : revenu de l'objet ($/s) tel que la boutique le comptera une fois rangé, calculé par le
 			-- serveur (BB_Reveal.Income le montre tel quel) ; absent : le client le calcule comme avant.
 			{ Name = "income", Kind = "number", Min = 0, Optional = true },
+			-- a517 (Cantin, 27/11) : zone écrite « ZONE N » sur le colis offert (Shared/BoxZoneTag, plus haute que la meilleure zone
+			-- du joueur) ; absent : aucune étiquette (le colis d'un rayon la lit dans son attribut BoxZone).
+			{ Name = "boxZone", Kind = "number", Min = 1, Max = 99, Optional = true },
 		},
 	},
 	{
@@ -915,6 +924,11 @@ local List: { RemoteDef } = {
 			{ Name = "detail", Kind = "string", Min = 0, Max = 120 },
 			{ Name = "icon", Kind = "string", Min = 0, Max = 160 },
 			{ Name = "plain", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+			-- a457 (L-335 point 2) : durée à l'écran en s, pour cette annonce seulement (l'aube : Config/Announce.DawnBoxHold) ;
+			-- absente : Config/Announce.Hold.
+			{ Name = "hold", Kind = "number", Min = 0, Max = 30, Optional = true },
+			-- a457 (L-379) : true = sortie qui défile au bout de hold s (Config/Announce.DawnBoxScroll) ; absent : fermeture d'avant.
+			{ Name = "scroll", Kind = "boolean", Optional = true },
 		},
 	},
 	{
@@ -998,6 +1012,15 @@ local List: { RemoteDef } = {
 		Direction = "ServerToClient",
 		Reliable = true,
 		Args = {},
+	},
+	{
+		-- a522 (L-455), absent du tableau 9.4 : un autre joueur vient de ramener un objet en zone safe
+		-- (CelebrationService, à tous sauf lui, au plus un toutes les Config/Announce.ServerWin.Gap s) ; ServerWinController
+		-- joue Heist_ServerWin en 3D à `position` (là où il a passé la ligne safe). Son seulement.
+		Name = "ServerWin",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = { { Name = "position", Kind = "Vector3" } },
 	},
 }
 

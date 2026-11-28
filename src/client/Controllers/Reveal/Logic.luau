@@ -19,6 +19,7 @@ export type Payload = {
 	RevealId: string,
 	Plan: string?, -- vague 73 (a251, L-236) : plan de la nouvelle ouverture (Shared/UnboxPlan), absent : cinématique d'avant
 	Income: number?, -- a493 : $/s de l'objet calculé par le serveur (celui de la boutique) ; absent : calcul du client
+	BoxZone: number?, -- a517 : zone écrite « ZONE N » sur le colis offert (Shared/BoxZoneTag) ; absent : aucune
 }
 
 local function finite(value: any, default: number): number
@@ -63,6 +64,7 @@ function Logic.parse(first: any, ...: any): Payload?
 			RevealId = rest[9],
 			Plan = rest[10],
 			Income = rest[11],
+			BoxZone = rest[12],
 		}
 	end
 	local revealId, itemId, shopId = t.RevealId, t.ItemId, t.ShopId
@@ -96,6 +98,7 @@ function Logic.parse(first: any, ...: any): Payload?
 		Income = if type(t.Income) == "number" and t.Income == t.Income and t.Income >= 0 and t.Income < math.huge
 			then t.Income
 			else nil,
+		BoxZone = if type(t.BoxZone) == "number" and t.BoxZone >= 1 and t.BoxZone < math.huge then math.floor(t.BoxZone) else nil,
 	}
 end
 

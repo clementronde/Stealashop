@@ -105,6 +105,13 @@
 -- a507 (L-476, correctif sans interrupteur) : dans les copies de BB_Gain (au-dessus du joueur, autour de lui, et la copie
 --   de Row qui vole), Row.Amount prend la largeur de son texte (Shared/GainFit) : le « +N » et l'icône sont centrés
 --   ensemble, quelle que soit la longueur du nombre (fitAmount).
+-- a524 (L-447 ; Features.GainFlyToCounter / GainFlyToCounterDev, Config/HeistFeel.BillFly.SpreadEnabled) : allumé, les
+--   billets de billFly partent du centre et s'écartent (SpreadTime, Quad Out) avant de voler (FlyTime, Quad In) ; à
+--   l'arrivée du premier, CashRow.CashIcon rebondit (IconPop) ; les gains hors ligne réclamés passent aussi par billFly.
+--   Sans interrupteur : fly() prend CashFly.Bill quand Template manque.
+-- a524 (L-466 ; Features.DisplayPlaceMoment / DisplayPlaceMomentDev, Config/Displayed.PlaceMoment) : allumé, la pose
+--   d'un objet chez le joueur local le blanchit (Highlight passager), tient « +$X/s » PlaceMoment.Hold s, lance
+--   FX_DisplayPlace et fait sauter CashRow.Income à l'arrivée (placeMoment, incomePop).
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -208,6 +215,11 @@ local InventoryState = require(Shared:WaitForChild("InventoryState"))
 local displayedModule = Shared:WaitForChild("Config"):FindFirstChild("Displayed")
 local DisplayedConfig: any = if displayedModule and displayedModule:IsA("ModuleScript") then require(displayedModule) :: any else nil
 local INCOME_FLY: any = if DisplayedConfig then DisplayedConfig.IncomeFly else nil
+-- a524 (L-466, Features.DisplayPlaceMoment / DisplayPlaceMomentDev) : la pose mise en scène ; coupé ou Config plus
+-- ancienne (bancs) : nil, IncomeFly seul comme avant.
+local PLACE: any = if DisplayedConfig and DisplayedConfig.PlaceMoment and DisplayedConfig.PlaceMoment.Enabled == true
+	then DisplayedConfig.PlaceMoment
+	else nil
 local DISPLAY_TAG = "DisplayItem" -- tag de code des objets exposés (DisplayService)
 type ChaseApi = { IsChased: () -> boolean }
 
@@ -234,6 +246,11 @@ local BILL = HeistFeel.BillFly
 local BILL_RISE_INFO = TweenInfo.new(BILL.RiseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out) -- V0
 local BILL_FADE_INFO = TweenInfo.new(BILL.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local BILL_FLY_INFO = TweenInfo.new(BILL.FlyTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+-- a524 (L-447, Features.GainFlyToCounter / GainFlyToCounterDev) : écart des billets avant le vol, rebond de CashIcon,
+-- billets pour les gains hors ligne réclamés. Config plus ancienne (bancs) : coupé.
+local BILL_SPREAD: boolean = BILL.SpreadEnabled == true and BILL.IconPop ~= nil
+local BILL_SPREAD_INFO = TweenInfo.new(BILL.SpreadTime or 0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local BILL_ICON_INFO = TweenInfo.new(if BILL.IconPop then BILL.IconPop.Time else 0, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 -- V0 proposé, absent du doc : nom des UIScale posés sur les copies (détruits avec elles).
 local COPY_SCALE = "GainScale"
 
@@ -999,9 +1016,10 @@ local function fly(amount: number, releases: { () -> () }, fromPlayer: boolean)
 		return
 	end
 	local refs = hudRefs()
-	local template = if refs then typed(refs.fly, "Template", "GuiObject") :: GuiObject? else nil
+	-- a524 (L-447) : sans Template (absent de UI_HUD depuis v1382), le billet Bill, comme billFly.
+	local template = if refs then (typed(refs.fly, "Template", "GuiObject") or typed(refs.fly, "Bill", "GuiObject")) :: GuiObject? else nil
 	if refs == nil or template == nil then
-		warnOnce("flyer", `[Gains] UI_HUD.{CASH_FLY}.Template absent : l'argent défile sans case qui vole`)
+		warnOnce("flyer", `[Gains] UI_HUD.{CASH_FLY}.Template et Bill absents : l'argent défile sans case qui vole`)
 		releaseAll(releases)
 		bump(refs)
 		return
@@ -1089,6 +1107,15 @@ end
 -- sursaut, « +$X » à côté du compteur et un seul son (arrive). Éléments facultatifs de UI_HUD.CashFly proposés à
 -- Clément : GainPop (TextLabel du « +$X ») et Bill (le billet) ; sans eux, CounterPop et Template de CashFly ; sans
 -- rien : l'argent défile tout de suite et le compteur sursaute (comme avant).
+-- a524 (L-447) : à l'arrivée du premier billet, CashRow.<IconPop.Name> (CashIcon de Clément) rebondit ; absent : rien.
+local function iconPop()
+	local refs = hudRefs()
+	local icon = if refs then refs.row:FindFirstChild(BILL.IconPop.Name) else nil
+	if icon and icon:IsA("GuiObject") then
+		Motion.Pop(icon :: GuiObject, BILL.IconPop.From, BILL_ICON_INFO)
+	end
+end
+
 local function billFly(amount: number, releases: { () -> () })
 	local refs = hudRefs()
 	local billTemplate = if refs then (typed(refs.fly, "Bill", "GuiObject") or typed(refs.fly, "Template", "GuiObject")) :: GuiObject? else nil
@@ -1129,6 +1156,9 @@ local function billFly(amount: number, releases: { () -> () })
 				arrived = true
 				active.Bills -= 1
 				arrive(amount, releases)
+				if BILL_SPREAD then
+					iconPop() -- a524 (L-447) : CashIcon rebondit avec le sursaut du nombre
+				end
 			end
 		end
 		local now = hudRefs()
@@ -1149,21 +1179,36 @@ local function billFly(amount: number, releases: { () -> () })
 				local bill = template:Clone()
 				bill.Visible = true
 				bill.AnchorPoint = Vector2.new(0.5, 0.5)
-				bill.Position = UDim2.fromOffset(
+				local place = UDim2.fromOffset(
 					from.X + (random:NextNumber() * 2 - 1) * BILL.Spread,
 					from.Y + (random:NextNumber() * 2 - 1) * BILL.Spread / 2
 				)
+				-- a524 (L-447) : allumé, le billet part du centre et s'écarte jusqu'à sa place avant de voler.
+				bill.Position = if BILL_SPREAD then UDim2.fromOffset(from.X, from.Y) else place
 				local scale = Instance.new("UIScale")
 				scale.Name = COPY_SCALE
 				scale.Parent = bill
 				bill.Parent = now.screen
-				TweenService:Create(scale, BILL_FLY_INFO, { Scale = BILL.EndScale }):Play()
-				local move = TweenService:Create(bill, BILL_FLY_INFO, { Position = goal })
-				move.Completed:Connect(function()
-					bill:Destroy()
-					land()
-				end)
-				move:Play()
+				local function go()
+					if bill.Parent == nil then
+						land()
+						return
+					end
+					TweenService:Create(scale, BILL_FLY_INFO, { Scale = BILL.EndScale }):Play()
+					local move = TweenService:Create(bill, BILL_FLY_INFO, { Position = goal })
+					move.Completed:Connect(function()
+						bill:Destroy()
+						land()
+					end)
+					move:Play()
+				end
+				if BILL_SPREAD then
+					local spread = TweenService:Create(bill, BILL_SPREAD_INFO, { Position = place })
+					spread.Completed:Connect(go)
+					spread:Play()
+				else
+					go()
+				end
 			end)
 		end
 	end)
@@ -1234,6 +1279,78 @@ local function incomeLabel(refs: HudRefs): TextLabel
 	return label
 end
 
+-- a524 (L-466, Config/Displayed.PlaceMoment) : l'objet tout juste posé blanchit puis reprend ses couleurs (un seul
+-- Highlight passager à la fois), et les étoiles de Clément (FX_DisplayPlace) partent FxDelay s plus tard sur son centre.
+local placeFlash: Highlight? = nil
+
+local function placeMoment(model: Model)
+	local spec = PLACE
+	if spec == nil then
+		return
+	end
+	local previous = placeFlash
+	if previous then
+		previous:Destroy()
+	end
+	local flash = Instance.new("Highlight")
+	flash.Name = spec.FlashName
+	flash.FillColor = spec.FlashColor
+	flash.FillTransparency = 0
+	flash.OutlineTransparency = 1
+	flash.DepthMode = Enum.HighlightDepthMode.Occluded
+	flash.Adornee = model
+	flash.Parent = model
+	placeFlash = flash
+	local fade = TweenService:Create(flash, TweenInfo.new(spec.FlashTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FillTransparency = 1 })
+	fade.Completed:Connect(function()
+		if placeFlash == flash then
+			placeFlash = nil
+		end
+		flash:Destroy()
+	end)
+	fade:Play()
+	task.delay(spec.FxDelay, function()
+		if model.Parent == nil then
+			return
+		end
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local folder = if assets then assets:FindFirstChild("FX") else nil
+		local template = if folder then folder:FindFirstChild(spec.Fx) else nil
+		if template == nil or not template:IsA("Model") then
+			warnOnce("placeFx", `[Gains] Assets/FX/{spec.Fx} absent : pose sans étoiles`)
+			return
+		end
+		local fx = (template :: Model):Clone()
+		local center = model:GetBoundingBox()
+		fx:PivotTo(CFrame.new(center.Position))
+		fx.Parent = Workspace
+		for _, item in fx:GetDescendants() do
+			if item:IsA("ParticleEmitter") then
+				local count = item:GetAttribute("EmitCount")
+				if type(count) == "number" and count > 0 then
+					(item :: ParticleEmitter):Emit(count)
+				end
+			end
+		end
+		local duration = fx:GetAttribute("Duration")
+		task.delay(if type(duration) == "number" and duration > 0 then duration else spec.FxDuration, function()
+			fx:Destroy()
+		end)
+	end)
+end
+
+-- a524 (L-466) : à l'arrivée du « +$X/s », Income de UI_HUD saute ; absent : CashRow sursaute, comme avant.
+local function incomePop()
+	local refs = hudRefs()
+	local spec = PLACE
+	local label = if refs and spec then (refs.row:FindFirstChild(spec.IncomePop.Name) or Find.path(refs.screen, spec.IncomePop.Name)) else nil
+	if spec and label and label:IsA("GuiObject") then
+		Motion.Pop(label :: GuiObject, spec.IncomePop.From, TweenInfo.new(spec.IncomePop.Time, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+	else
+		bump(refs)
+	end
+end
+
 local function incomeFly(uid: string, income: number)
 	local spec = INCOME_FLY
 	local refs = hudRefs()
@@ -1258,6 +1375,9 @@ local function incomeFly(uid: string, income: number)
 		local start: Vector2? = nil
 		if model and model:IsA("Model") then
 			start = toScreen(now, (model :: Model):GetPivot().Position + Vector3.new(0, spec.Lift, 0))
+			if PLACE then
+				placeMoment(model :: Model) -- a524 (L-466) : blanc puis couleurs, étoiles
+			end
 		end
 		start = start or worldStart(now)
 		local size = now.screen.AbsoluteSize
@@ -1273,7 +1393,7 @@ local function incomeFly(uid: string, income: number)
 		scale.Parent = label
 		label.Parent = now.screen
 		TweenService:Create(scale, TweenInfo.new(spec.PopTime, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-		task.wait(spec.PopTime + spec.Hold)
+		task.wait(spec.PopTime + (if PLACE then PLACE.Hold else spec.Hold)) -- a524 (L-466) : 1,5 s allumé
 		local target = hudRefs()
 		if target == nil or label.Parent == nil then
 			active.IncomeFlies -= 1
@@ -1292,7 +1412,11 @@ local function incomeFly(uid: string, income: number)
 		move.Completed:Connect(function()
 			active.IncomeFlies -= 1
 			label:Destroy()
-			bump(hudRefs())
+			if PLACE then
+				incomePop() -- a524 (L-466) : Income saute
+			else
+				bump(hudRefs())
+			end
 			Motion.PlaySound(spec.Sound)
 		end)
 		move:Play()
@@ -1913,6 +2037,12 @@ function classic(total: number, releases: { () -> () }, fromPad: boolean)
 	-- Vague 59 (L-184 point 3) : récompense ou prime de l'index, jamais un revenu de la base (plaque, encaissement
 	-- automatique : CashCollected monte aussi ; gains hors ligne) : billets qui volent, avec ou sans FLY.Enabled.
 	if not fromPad and not screenOpen(offline) and (screenOpen(rewards) or indexOpen()) then
+		billFly(total, releases)
+		return
+	end
+	-- a524 (L-447) : allumé, les gains hors ligne réclamés ont aussi leurs billets (CashFly.Bill) ; leur versement fait
+	-- monter CashCollected (fromPad peut être vrai) : l'écran UI_Offline ouvert suffit.
+	if BILL_SPREAD and screenOpen(offline) then
 		billFly(total, releases)
 		return
 	end

@@ -1145,7 +1145,8 @@ local function deposit(theft: Theft, root: BasePart)
 		)
 	end)
 	local secured, securedErr = pcall(function()
-		Net.Server.ItemSecured:Fire(thief, theft.ItemId, if okIncome then income else nil)
+		-- a521 (L-405) : et son poids (Card.Weight) ; pas de coup de chance pour un objet volé.
+		Net.Server.ItemSecured:Fire(thief, theft.ItemId, if okIncome then income else nil, stolen.Weight)
 	end)
 	if not secured then
 		warn(`[PvPService] ItemSecured vers {thief.Name} : {securedErr}`)

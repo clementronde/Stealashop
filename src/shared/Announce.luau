@@ -7,10 +7,13 @@
 -- avant, et ni l'annonce de jour ni celle du vol (DayBoxMinRarity et StealMinRarity rendent nil).
 --
 -- API (serveur) :
---   Announce.send(message, detail?, icon?, plain?, except?)   à tous les joueurs sauf ceux de except
+--   Announce.send(message, detail?, icon?, plain?, except?, hold?, scroll?)   à tous les joueurs sauf ceux de except
 --   Announce.rarityText(rarity) -> string                     « <font color="#FFC21A">LEGENDARY</font> »
 --   Announce.boxes(rarity, store, zone, count, night)         annonces 1 et 2 (textes de Config/Unbox.NightBox*)
 --   Announce.dayBoxMinRarity() -> string?                     seuil de l'annonce de jour, nil si coupée
+--   Announce.dawnBoxes() -> boolean                           a457 (L-335) : annonce des caisses au lever du jour allumée
+--   Announce.oneBox(rarity, zone, hold?, scroll?)              a457 : « A LEGENDARY box is in Zone 6! » (DawnBoxText)
+--   Announce.dawnBox(rarity, zone)                             a457 : la même, DawnBoxHold s puis sortie qui défile (L-379)
 --   Announce.steal(thief, victim, itemId, income)             annonce 3, si la rareté atteint StealMinRarity
 --   Announce.serverLuck(buyer, multiplier, minutes, running?, icon?, plain)   annonce 4 ; plain = texte d'avant
 --   Announce.strip(text) -> string                             texte sans balises RichText
@@ -28,6 +31,20 @@ local Rarities = require(Config:WaitForChild("Rarities"))
 local Items = require(Config:WaitForChild("Items"))
 
 local Announce = {}
+
+-- a457 : module de Config chargé s'il est là (bancs à liste de modules fixe, comme dans Config/Items).
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return Config:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
 
 local function net(): any
 	return require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
@@ -51,14 +68,28 @@ function Announce.rarityText(rarity: Rarities.Rarity): string
 	return string.format(Settings.RarityTag, hex(rarity.Color), rarity.DisplayNameUpper)
 end
 
-function Announce.send(message: string, detail: string?, icon: string?, plain: string?, except: { Player }?)
+function Announce.send(
+	message: string,
+	detail: string?,
+	icon: string?,
+	plain: string?,
+	except: { Player }?,
+	hold: number?,
+	scroll: boolean?
+)
 	local text = plain or Announce.strip(message)
 	local remotes = net()
 	for _, player in Players:GetPlayers() do
 		if except == nil or table.find(except, player) == nil then
 			local ok, err = pcall(function()
 				if Settings.Enabled == true then
-					remotes.Server.Announce:Fire(player, message, detail or "", icon or "", text)
+					if scroll == true then
+						remotes.Server.Announce:Fire(player, message, detail or "", icon or "", text, hold or Settings.Hold, true) -- a457 (L-379)
+					elseif hold ~= nil then
+						remotes.Server.Announce:Fire(player, message, detail or "", icon or "", text, hold) -- a457 : durée de cette annonce
+					else
+						remotes.Server.Announce:Fire(player, message, detail or "", icon or "", text)
+					end
 				else
 					remotes.Server.Notify:Fire(player, text, Settings.NotifyKind)
 				end
@@ -74,7 +105,38 @@ function Announce.dayBoxMinRarity(): string?
 	return if Settings.Enabled == true and Settings.DayBoxEnabled == true then Settings.DayBoxMinRarity else nil
 end
 
+-- a457 (L-335 point 2) : annonce des caisses au lever du jour, en une phrase (Features.DawnBoxAnnounce partout, ou
+-- DawnBoxAnnounceDev dans le jeu DEV ; Config/Announce.DawnBoxText présent).
+function Announce.dawnBoxes(): boolean
+	local features = optional("Features")
+	local productIds = optional("ProductIds")
+	local on = features.DawnBoxAnnounce == true or (features.DawnBoxAnnounceDev == true and productIds.IsDev == true)
+	return on and type((Settings :: any).DawnBoxText) == "string"
+end
+
+-- a457 : « A LEGENDARY box is in Zone 6! » (rareté en couleur), sans Detail, icône du colis ; hold = durée à l'écran
+-- (l'aube : Config/Announce.DawnBoxHold ; nil : Config/Announce.Hold).
+function Announce.oneBox(rarity: Rarities.Rarity, zone: number, hold: number?, scroll: boolean?)
+	local template: string = (Settings :: any).DawnBoxText
+	local values = { rarity = rarity.DisplayNameUpper, zone = tostring(zone) }
+	local plain = fill(template, values)
+	values.rarity = Announce.rarityText(rarity)
+	Announce.send(fill(template, values), "", Settings.BoxIconPrefix .. rarity.Id, plain, nil, hold, scroll)
+end
+
+-- a457 : l'annonce du lever du jour, Config/Announce.DawnBoxHold s à l'écran (les autres : Hold), puis sortie qui
+-- défile (L-379, Config/Announce.DawnBoxScroll).
+function Announce.dawnBox(rarity: Rarities.Rarity, zone: number)
+	local settings: any = Settings
+	local hold = settings.DawnBoxHold
+	Announce.oneBox(rarity, zone, if type(hold) == "number" then hold else nil, settings.DawnBoxScroll == true)
+end
+
 function Announce.boxes(rarity: Rarities.Rarity, store: string, zone: number, count: number, night: boolean)
+	if not night and Announce.dawnBoxes() then
+		Announce.oneBox(rarity, zone) -- a457 : l'annonce de jour prend la phrase unique
+		return
+	end
 	local template = if count == 1 then Unbox.NightBoxText else Unbox.NightBoxesText
 	local values = { rarity = rarity.DisplayNameUpper, store = store, count = tostring(count) }
 	local plain = fill(template, values)

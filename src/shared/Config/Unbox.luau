@@ -343,6 +343,30 @@ local Unbox = {
 		MarkBoard = "BB_UnboxMark", -- L-246 : Mark (« ? » puis « ! »)
 		MarkStart = "?",
 		MarkImpact = "!",
+
+		-- a523 (L-462, Features.UnboxHitLuck / UnboxHitLuckDev ; Clément 26/11, paquet H idée 1) : la chance qui monte
+		-- pendant les coups d'un colis de rayon. Le serveur tire Hits gains d'avance (Shared/UnboxPlan.hitsDraw), avant
+		-- l'objet : chaque gain vaut Step × la chance tirée (la base) × le niveau de série (1 à StreakMax : « x2 STREAK »),
+		-- ou SuperGain × la base pour « SUPER LUCK! » ; le total des gains reste sous MaxBonus × la base ; l'objet est tiré
+		-- avec base × (1 + total), la chance montrée à la fin des coups. Le client répartit les Hits gains sur les Impacts
+		-- de la scène avant le coup final (plusieurs gains sur un Impact s'il y en a moins). Valeurs : V0 proposé (a523, 28/11).
+		HitLuck = {
+			Hits = 6, -- V0 : nombre de gains tirés (à peu près les Impacts d'un colis Rare avant la masse)
+			Step = 0.2, -- V0 (exemple de la fiche, « +0.2 LUCK ») : gain d'un coup, en part de la base
+			StreakChance = 0.35, -- V0 : chance qu'un coup prolonge la série (niveau + 1), sinon retour au niveau 1
+			StreakMax = 3, -- V0 : « x3 STREAK » au plus
+			SuperChance = 0.04, -- V0 : chance d'un « SUPER LUCK! » à chaque coup (un seul par ouverture)
+			SuperGain = 2, -- V0 (fiche : « +2.0 ») : gain du « SUPER LUCK! », en part de la base
+			MaxBonus = 3, -- V0 : total des gains ≤ 3 × la base (chance finale ≤ 4 × la base)
+			GainBoard = "BB_UnboxLuckGain", -- L-462 (nom proposé, Figma page 44) : Amount, Streak, SuperLuck (Label, Gain, Total)
+			GainText = "+%s LUCK",
+			StreakText = "x%d STREAK",
+			SuperText = "SUPER LUCK!",
+			GainShow = 0.8, -- V0 : s, durée d'affichage d'un gain (SUPER LUCK! : deux fois plus)
+			GainRise = 1.5, -- V0 : studs, montée du billboard pendant qu'il est affiché
+			SuperFx = "FX_Unbox_SuperLuck", -- L-462 (chef VFX, v1263)
+			SuperSound = "Unbox_SuperLuck", -- L-462 : absent tant que Clément n'a pas choisi (muet)
+		},
 	},
 }
 

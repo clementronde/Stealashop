@@ -1115,6 +1115,8 @@ for _, screenDef in UI.Screens do
 		-- fin de la liste du HUD reste SkillTreeButton).
 		table.insert(screenDef.Elements, 2, { Path = "CashFly.Bill", Class = "GuiObject", Optional = true, Note = "CashFly.Template sert de billet" })
 		table.insert(screenDef.Elements, 2, { Path = "CashFly.GainPop", Class = "TextLabel", Optional = true, Note = "CashFly.CounterPop sert au « +$X » du départ" })
+		-- a524 (L-447) : l'icône de CashRow rebondit à l'arrivée des billets (Features.GainFlyToCounter).
+		table.insert(screenDef.Elements, 2, { Path = "CashIcon", Class = "GuiObject", Optional = true, Note = "pas de rebond de l'icône à l'arrivée des billets (L-447)" })
 	end
 end
 
@@ -1709,5 +1711,47 @@ for index = #UI.Screens, 1, -1 do
 end
 UI.Retired.Screens["UI_Index"] = "ancien index, plus lu : UI_Index_v3 seul (a508, L-475)"
 UI.Retired.Screens["UI_Index_v2"] = "ancien index v2, plus lu : UI_Index_v3 seul (a508, L-475)"
+-- a521 (L-405, 28/11) : carte ITEM SECURED. Card.Weight (poids de l'objet, toujours) ; le reste est lu par
+-- Controllers/Escape/SecuredCard (Features.SecuredCardV2). Livrés par le chef UI (25 et 26/11), tous facultatifs.
+for _, screenDef in UI.Screens do
+	if screenDef.Name == "UI_Escape" then
+		table.insert(screenDef.Elements, { Path = "Card.Weight", Class = "TextLabel", Optional = true, Note = "le poids de l'objet n'est pas écrit" })
+		table.insert(screenDef.Elements, { Path = "Card.Preview", Class = "ViewportFrame", Optional = true, Note = "pas d'objet en 3D (ItemIcon reste)" })
+		table.insert(screenDef.Elements, { Path = "Card.Rays", Class = "ImageLabel", Optional = true, Note = "pas de sunburst" })
+		table.insert(screenDef.Elements, { Path = "Card.RaysBack", Class = "ImageLabel", Optional = true, Note = "pas de 2e sunburst (Légendaire et plus)" })
+		table.insert(screenDef.Elements, { Path = "Card.Burst", Class = "ImageLabel", Optional = true, Note = "pas d'éclat à l'arrivée (Légendaire et plus)" })
+		table.insert(screenDef.Elements, { Path = "Card.TierScale", Class = "UIScale", Optional = true, Note = "la carte ne grandit pas au grand palier" })
+		table.insert(screenDef.Elements, { Path = "Card.RarityTag", Class = "TextLabel", Optional = true, Note = "pas de « MYTHIC! » ni de « LUCKY! »" })
+		table.insert(screenDef.Elements, { Path = "SecuredFx.Rain.Template", Class = "ImageLabel", Optional = true, Template = true, Note = "pas de pluie d'étoiles au grand palier" })
+	end
+end
+
+-- a517 (demande de Cantin, 27/11 ; Shared/BoxZoneTag) : étiquette « ZONE N » d'un colis d'une zone plus haute que l'endroit
+-- (ou, colis offert, que la meilleure zone du joueur). ZoneTag : un TextLabel, ou un GuiObject qui contient un TextLabel
+-- Label ; le code écrit « ZONE 3 » et le montre, ou le cache. Nom proposé à Clément, pas encore livré : facultatif (absent :
+-- une pastille du code au-dessus du billboard).
+for _, billboard in UI.Billboards do
+	if billboard.Name == "BB_Box" or billboard.Name == "BB_UnboxOdds" then
+		table.insert(billboard.Elements, { Path = "ZoneTag", Class = "GuiObject", Optional = true, Note = "« ZONE N » écrit par le repli du code (a517)" })
+	end
+end
+
+-- a523 (L-462, Features.UnboxHitLuck) : gain des coups de l'ouverture d'un colis, au-dessus du compteur « ×N LUCK » ; noms
+-- proposés (Figma page 44), pas encore livrés : facultatif (absent, un billboard du code aux mêmes noms).
+--   Amount (« +0.2 LUCK »), Streak (« x2 STREAK », caché sauf en série), SuperLuck (Frame cachée : Label « SUPER LUCK! »,
+--   Gain « +2.0 », Total « ×3.40 »).
+table.insert(UI.Billboards, {
+	Name = "BB_UnboxLuckGain",
+	Class = "BillboardGui",
+	Optional = true,
+	Elements = {
+		{ Path = "Amount", Class = "TextLabel" },
+		{ Path = "Streak", Class = "TextLabel", Optional = true, Note = "pas de « x2 STREAK » affiché" },
+		{ Path = "SuperLuck", Class = "Frame", Optional = true, Note = "pas de cadre SUPER LUCK! (le gain seul)" },
+		{ Path = "SuperLuck.Label", Class = "TextLabel", Optional = true },
+		{ Path = "SuperLuck.Gain", Class = "TextLabel", Optional = true },
+		{ Path = "SuperLuck.Total", Class = "TextLabel", Optional = true },
+	} :: { Element },
+})
 
 return UI

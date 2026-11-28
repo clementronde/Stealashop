@@ -20,7 +20,7 @@ local UnboxPlan = {}
 
 export type Action = Unbox.Action
 export type Step = { Action: Action, Rarity: string }
-export type Plan = { Steps: { Step }, Odds: number, Luck: number? } -- Luck : a462 (L-376)
+export type Plan = { Steps: { Step }, Odds: number, Luck: number?, Hits: { string }? } -- Luck : a462 (L-376) ; Hits : a523 (L-462)
 export type Move = { Action: Action, Place: string, Teleport: boolean } -- vague 74 (a257, L-258)
 
 UnboxPlan.MaxSteps = 12
@@ -77,6 +77,90 @@ end
 -- silhouettes seules (HitsShare compté 0) jusqu'à la vraie cote. Coupé : la cote monte pendant les coups (a287).
 function UnboxPlan.luckClimbs(): boolean
 	return featureOn("UnboxLuckClimb")
+end
+
+-- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : interrupteur Features.UnboxHitLuck
+-- (partout) ou UnboxHitLuckDev (jeu DEV seulement). Allumé : le serveur tire d'avance les gains des coups (hitsDraw),
+-- AVANT l'objet, et tire l'objet avec la chance finale (hitsFinal) : la chance montrée à la fin des coups est la vraie.
+-- Le plan porte la chance tirée (la base) et les gains en 4e partie (« |1.50|112S10 ») ; le client les montre aux
+-- Impacts (hitsUpTo). Coupé : la chance d'avant (luckClimbs, L-376).
+function UnboxPlan.hitLuck(): boolean
+	return featureOn("UnboxHitLuck")
+end
+
+local HIT = Unbox.New.HitLuck
+
+-- Gain d'un coup, en part de la base : « 0 » rien (plafond atteint), « 1 » à « 9 » le niveau de série × Step,
+-- « S » le SUPER LUCK! (SuperGain).
+function UnboxPlan.hitFactor(kind: string): number
+	if kind == "S" then
+		return HIT.SuperGain
+	end
+	local level = tonumber(kind)
+	return if level then level * HIT.Step else 0
+end
+
+-- Tire les HitLuck.Hits gains d'une ouverture (le Random du serveur : `roll()` dans [0, 1[). Chaque coup : un SUPER LUCK!
+-- (SuperChance, un seul par ouverture), sinon un gain au niveau de série (1 au premier coup ; + 1 avec StreakChance,
+-- jusqu'à StreakMax, sinon retour à 1). Le total reste sous MaxBonus : un gain qui le dépasserait est ramené au
+-- niveau qui tient, ou « 0 ».
+function UnboxPlan.hitsDraw(roll: () -> number): { string }
+	local out: { string } = {}
+	local level = 0
+	local super = false
+	local total = 0
+	local maxLevel = math.clamp(math.floor(HIT.StreakMax), 1, 9)
+	for index = 1, math.clamp(math.floor(HIT.Hits), 0, UnboxPlan.MaxSteps * 4) do
+		local kind: string
+		if not super and roll() < HIT.SuperChance then
+			super = true
+			kind = "S"
+			level = 0
+		else
+			level = if level >= 1 and roll() < HIT.StreakChance then math.min(level + 1, maxLevel) else 1
+			kind = tostring(level)
+		end
+		local gain = UnboxPlan.hitFactor(kind)
+		if total + gain > HIT.MaxBonus + 1e-9 then
+			-- Plafond : le plus haut niveau qui tient encore, sinon rien.
+			local fits = math.floor((HIT.MaxBonus - total) / math.max(HIT.Step, 1e-6) + 1e-9)
+			kind = tostring(math.clamp(fits, 0, maxLevel))
+			gain = UnboxPlan.hitFactor(kind)
+		end
+		total += gain
+		out[index] = kind
+	end
+	return out
+end
+
+-- Somme des gains des `count` premiers coups (tous par défaut), en part de la base.
+function UnboxPlan.hitsBonus(hits: { string }, count: number?): number
+	local n = math.min(count or #hits, #hits)
+	local sum = 0
+	for index = 1, n do
+		sum += UnboxPlan.hitFactor(hits[index])
+	end
+	return sum
+end
+
+-- Chance de base telle que le plan l'écrit (2 décimales) : le serveur tire l'objet avec elle, le client affiche la
+-- même, au centième près.
+function UnboxPlan.planLuck(luck: number): number
+	return tonumber(string.format("%.2f", luck)) or luck
+end
+
+-- Chance après les `count` premiers coups : base × (1 + gains) ; sans `count`, la chance finale, celle de l'objet.
+function UnboxPlan.hitsFinal(base: number, hits: { string }, count: number?): number
+	return base * (1 + UnboxPlan.hitsBonus(hits, count))
+end
+
+-- Nombre de gains montrés une fois passé l'Impact `impact` (compté de 1 sur toute la scène) sur `impacts` Impacts avant
+-- le coup final : les gains sont répartis à intervalles égaux, plusieurs sur un Impact s'il y en a moins que de gains.
+function UnboxPlan.hitsUpTo(hitCount: number, impact: number, impacts: number): number
+	if impacts <= 0 then
+		return hitCount
+	end
+	return math.clamp(math.floor(math.clamp(impact, 0, impacts) * hitCount / impacts + 1e-9), 0, hitCount)
 end
 
 -- a462 (décision de Cantin, 25/11 : montées visuelles cohérentes avec l'objet) : interrupteur
@@ -154,7 +238,7 @@ end
 -- `everyAction` = les améliorations tombent aux `upgrades` actions juste avant le coup final, à la suite (une rareté de
 -- plus à chaque action, la rareté tirée atteinte à l'avant-dernière) au lieu d'actions tirées au hasard ; sans tirage
 -- de plus (mêmes actions, même cote).
-function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?, everyAction: boolean?, luck: number?): string?
+function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startRarity: string?, upgrades: number?, odds: number?, everyAction: boolean?, luck: number?, hits: { string }?): string?
 	local final = Rarities.ById[finalRarity]
 	local finalAction = actionsById[New.FinalAction]
 	if final == nil or finalAction == nil then
@@ -220,6 +304,10 @@ function UnboxPlan.draw(finalRarity: string, pick: (n: number) -> number, startR
 	end
 	-- a462 (L-376) : la chance de l'ouvreur (luck), en 3e partie « |1.50 », quand elle est donnée.
 	if type(luck) == "number" and luck >= 1 and luck < 1e6 then
+		-- a523 (L-462) : les gains des coups en 4e partie « |112S10 » (un caractère par coup, UnboxPlan.hitFactor).
+		if hits and #hits > 0 and #hits <= UnboxPlan.MaxSteps * 4 then
+			return `{table.concat(parts, ",")}|{cote}|{string.format("%.2f", luck)}|{table.concat(hits)}`
+		end
 		return `{table.concat(parts, ",")}|{cote}|{string.format("%.2f", luck)}`
 	end
 	return `{table.concat(parts, ",")}|{cote}`
@@ -236,6 +324,11 @@ function UnboxPlan.parse(text: any): Plan?
 		-- a462 (L-376) : chance de l'ouvreur en 3e partie.
 		body, oddsText, luckText = string.match(text, "^([^|]+)|(%d+)|(%d+%.%d+)$")
 	end
+	local hitsText: string? = nil
+	if body == nil then
+		-- a523 (L-462) : gains des coups en 4e partie.
+		body, oddsText, luckText, hitsText = string.match(text, "^([^|]+)|(%d+)|(%d+%.%d+)|([0-9S]+)$")
+	end
 	local odds = if oddsText then tonumber(oddsText) else nil
 	if body == nil or odds == nil or odds < 1 or odds >= math.huge then
 		return nil
@@ -243,6 +336,17 @@ function UnboxPlan.parse(text: any): Plan?
 	local luck = if luckText then tonumber(luckText) else nil
 	if luck and (luck < 1 or luck >= 1e6) then
 		return nil
+	end
+	local hits: { string }? = nil
+	if hitsText then
+		if #hitsText > UnboxPlan.MaxSteps * 4 then
+			return nil
+		end
+		local list: { string } = {}
+		for kind in string.gmatch(hitsText, ".") do
+			table.insert(list, kind)
+		end
+		hits = list
 	end
 	local steps: { Step } = {}
 	local lastOrder = 0
@@ -259,7 +363,7 @@ function UnboxPlan.parse(text: any): Plan?
 	if #steps == 0 then
 		return nil
 	end
-	return { Steps = steps, Odds = odds, Luck = luck }
+	return { Steps = steps, Odds = odds, Luck = luck, Hits = hits }
 end
 
 -- Cote montrée avant la première action (index 0), puis au moment fort de l'action `index` : un nombre de la plage
@@ -297,7 +401,7 @@ function UnboxPlan.climbs(): boolean
 end
 
 local function share(): number
-	if UnboxPlan.luckClimbs() then
+	if UnboxPlan.luckClimbs() or UnboxPlan.hitLuck() then
 		return 0 -- a462 (L-376) : les coups font monter la chance, la cote monte sur les silhouettes seules
 	end
 	local value = New.OddsClimb.HitsShare
@@ -344,8 +448,42 @@ function UnboxPlan.luckHit(plan: Plan, index: number, hit: number, hits: number)
 end
 
 -- Texte « ×1.50 LUCK » (New.LuckText, comme BB_ShelfOpen.Row.Luck).
+-- a523 (L-442, Features.LuckTiers) : allumé, au format de Shared/LuckTiers (×9.99, ×99.9, ×999, ×1.5K…), le même
+-- sous ×10. Module absent (faux arbres des bancs) : le format d'avant.
+local luckTiers: any = (function(): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild("LuckTiers")
+	end)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
+
 function UnboxPlan.luckText(value: number): string
+	if luckTiers and luckTiers.on() then
+		return luckTiers.text(value)
+	end
 	return string.format(New.LuckText, value)
+end
+
+-- a523 : le nombre seul (« 3.40 », « 1.5K » avec les paliers), pour le Total du SUPER LUCK!.
+function UnboxPlan.luckNumber(value: number): string
+	if luckTiers and luckTiers.on() then
+		return luckTiers.format(value)
+	end
+	return string.format("%.2f", value)
+end
+
+-- a523 (L-462) : un gain des coups (« 0.2 », « 0.25 », « 2.0 », « 15.5 », puis « 1.5K » avec les paliers) : deux
+-- décimales au plus, sans zéro inutile après la première, pour que le gain montré soit celui qui s'ajoute.
+function UnboxPlan.gainText(amount: number): string
+	if amount >= 99.95 and luckTiers then
+		return luckTiers.format(amount)
+	end
+	local text = string.format("%.2f", amount)
+	return if string.sub(text, -1) == "0" then string.sub(text, 1, -2) else text
 end
 
 -- Cote montrée au départ (avant la première action).

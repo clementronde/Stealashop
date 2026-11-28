@@ -69,6 +69,10 @@
 --                      coupés restent livrés s'il en arrive un reçu, RetiredTiers) ; le reçu retire jusqu'à Skip s à
 --                      ce colis. Aucun colis en attente : les secondes payées vont dans
 --                      Monetization.OpenNowCredit du profil, retirées des prochains colis posés
+--                      a520 (L-410, Features.OpenNowOnLocked / OpenNowOnLockedDev) : E (OpenBox) sur son objet posé
+--                      encore sous antivol ouvre ici la fenêtre d'achat du palier de CET objet
+--                      (UnboxService.OfferSkip, Monetization.LockedSkipTier) ; le reçu de ce palier retire alors
+--                      le temps à cet objet s'il attend encore (sinon à celui qui attend le plus, comme avant)
 --   Vague 31 (L-112 ; décision de Cantin du 2026-11-12) : les deux mêmes achats valent pour
 --                      l'antivol d'un objet posé au sol, par le même chemin : UnboxService.GetWaiting et
 --                      SkipWait le comptent comme un colis en attente (Ouvrir maintenant, crédit, Fast Open à
@@ -123,7 +127,8 @@
 --   MonetizationService.AddCashBoost(player, seconds) -> boolean
 --       Boost ×2 argent : prolonge celui en cours de `seconds` (pour les récompenses, DEV-101) ; false
 --       si le profil n'est pas chargé ou la durée invalide. Sans yield.
---   MonetizationService.StartGiftReveal(player, itemId, startRarity?, chance?, effect?) -> boolean
+--   MonetizationService.StartGiftReveal(player, itemId, startRarity?, chance?, effect?, boxZone?) -> boolean
+--       a517 : boxZone = zone écrite « ZONE N » sur le colis (UnboxService.GiveZoneBoxItem, TagZone), sinon nil
 --       a309 (Cantin, 22/11) : la scène d'ouverture de la caisse exclusive (Crate.Reveal, mêmes règles) pour un
 --       colis offert déjà donné (paliers de temps de jeu, RewardService) ; true si elle est lancée. Sans yield.
 --
@@ -833,7 +838,8 @@ local function startReveal(
 	startRarity: string?,
 	odds: number?,
 	effect: string?,
-	kind: string -- "Crate" ou "Gift"
+	kind: string, -- "Crate" ou "Gift"
+	boxZone: number? -- a517 : étiquette « ZONE N » du colis offert (RevealStarted.boxZone), nil : aucune
 ): string?
 	local config = CRATE.Reveal
 	if config.Enabled ~= true then
@@ -939,7 +945,8 @@ local function startReveal(
 		"Small",
 		reveal.id,
 		plan,
-		revealIncomeOf(itemId, effect, weight) -- a512 : revenu du serveur, comme le colis du rayon (a493)
+		revealIncomeOf(itemId, effect, weight), -- a512 : revenu du serveur, comme le colis du rayon (a493)
+		boxZone -- a517
 	)
 	task.delay(maxSeconds, function()
 		finishCrateReveal(reveal, "plafond de temps")
@@ -1195,8 +1202,42 @@ local function isFloorItem(player: Player, uid: string): boolean
 	return ok and item ~= nil
 end
 
+-- a520 (L-410) : objet visé par la dernière fenêtre d'Open Now ouverte par E (offerLockedSkip), avec l'Id du palier
+-- proposé ; servi une fois par le reçu de ce même palier, oublié au départ du joueur (rien n'est sauvegardé).
+local skipTargets: { [Player]: { uid: string, id: number } } = {}
+
+-- a520 (L-410) : UnboxService.OfferSkip. Le serveur choisit le palier d'après l'attente réelle de l'objet
+-- (Monetization.LockedSkipTier) et ouvre la fenêtre d'achat ; rien n'est donné ici (le reçu, idempotent, le fait).
+local function offerLockedSkip(player: Player, itemUid: string, remaining: number): boolean
+	if not enabled or UnboxService.GetWaiting(player)[itemUid] == nil then
+		return false
+	end
+	local tier = Monetization.LockedSkipTier(remaining)
+	if tier == nil then
+		return false
+	end
+	local ok, err = pcall(function()
+		MarketplaceService:PromptProductPurchase(player, tier.Id)
+	end)
+	if not ok then
+		warn(`[MonetizationService] fenêtre d'Open Now pour {player.Name} : {err}`)
+		return false
+	end
+	skipTargets[player] = { uid = itemUid, id = tier.Id }
+	log(`{player.Name} : E sur l'objet {itemUid} sous antivol ({duration(remaining)} restantes) : Open Now {tier.Price} R$ proposé`)
+	return true
+end
+
 local function grantOpenNow(player: Player, data: Data, tier: Tier): string
 	local bench = longestWait(player)
+	-- a520 (L-410) : reçu du palier proposé par E : le temps va à l'objet visé, s'il attend encore.
+	local target = skipTargets[player]
+	if target and target.id == tier.Id then
+		skipTargets[player] = nil
+		if UnboxService.GetWaiting(player)[target.uid] ~= nil then
+			bench = target.uid
+		end
+	end
 	if bench then
 		local isItem = isFloorItem(player, bench) -- vague 31 : l'antivol d'un objet au sol, même chemin
 		local left = UnboxService.SkipWait(player, bench, tier.Skip)
@@ -1657,14 +1698,14 @@ end
 -- règles que la caisse exclusive (Crate.Reveal : coupée, zone safe seulement, autre cinématique, personnage mort ;
 -- boutique coupée comprise) ; colis montré en `startRarity`, cote finale 1 / `chance` (pour cent, Formulas.UnboxOdds).
 -- true si l'ouverture est lancée (l'objet montré n'a alors pas de message), false sinon (rien n'est joué). Sans yield.
-function MonetizationService.StartGiftReveal(player: Player, itemId: string, startRarity: string?, chance: number?, effect: string?): boolean
+function MonetizationService.StartGiftReveal(player: Player, itemId: string, startRarity: string?, chance: number?, effect: string?, boxZone: number?): boolean
 	local odds: number? = nil
 	local formulas = lazy("Formulas", Shared.Config, "Formulas")
 	local value = finite(chance)
 	if formulas and type(formulas.UnboxOdds) == "function" and value > 0 then
 		odds = (formulas.UnboxOdds :: any)(math.min(value / 100, 1))
 	end
-	local ok, why = pcall(startReveal, player, { itemId }, itemId, startRarity, odds, effect, "Gift")
+	local ok, why = pcall(startReveal, player, { itemId }, itemId, startRarity, odds, effect, "Gift", boxZone)
 	if not ok then
 		warn(`[MonetizationService] {player.Name} : ouverture du colis offert impossible ({why}), objet donné quand même`)
 		return false
@@ -1760,6 +1801,16 @@ local function installHooks()
 			return baseAntiTheft(player, itemId) * factor
 		end
 	end
+	-- a520 (L-410) : E sur son objet sous antivol propose Open Now (offerLockedSkip) ; sinon l'offre d'avant (refus).
+	local baseOfferSkip = UnboxService.OfferSkip
+	if (baseOfferSkip :: any) ~= nil then -- absent d'un UnboxService de banc
+		UnboxService.OfferSkip = function(player: Player, itemUid: string, remaining: number): boolean
+			if offerLockedSkip(player, itemUid, remaining) then
+				return true
+			end
+			return baseOfferSkip(player, itemUid, remaining) == true
+		end
+	end
 end
 
 function MonetizationService.Init()
@@ -1779,6 +1830,7 @@ function MonetizationService.Init()
 		task.defer(function()
 			states[player] = nil
 		end)
+		skipTargets[player] = nil -- a520 : un reçu plus tard (autre serveur) va à l'objet qui attend le plus
 		local reveal = crateRevealOf[player] -- a294 : son ouverture de caisse en cours, finie (RevealEnded pour les autres)
 		if reveal then
 			reveal.pending = {} -- a297 : joueur parti, aucun message (Parent vaut encore Players pendant PlayerRemoving)

@@ -1097,5 +1097,29 @@ local LeaderboardStatue: ModelSpec = {
 }
 Models.LeaderboardStatue = LeaderboardStatue
 table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, LeaderboardStatue)
+-- a524 (L-466, livré par Clément, v1263) : étoiles de la pose d'un objet sur un présentoir, clonées par GainController
+-- sur le centre de l'objet (Features.DisplayPlaceMoment). Tout est facultatif : sans lui, la pose se fait sans étoiles.
+local DisplayPlaceFx: ModelSpec = {
+	Key = "DisplayPlaceFx",
+	Label = "étoiles de la pose sur un présentoir",
+	Category = "Parcelles",
+	Names = { "FX_DisplayPlace" },
+	Parts = {
+		{ Name = "Root", Class = "BasePart", Optional = true, Note = "PrimaryPart invisible, L-466" },
+		{ Name = "Burst", Class = "Attachment", Optional = true, Note = "porte Stars et Glint, L-466" },
+		{ Name = "Stars", Class = "ParticleEmitter", Optional = true, Note = "étoiles (attribut EmitCount), L-466" },
+		{ Name = "Glint", Class = "ParticleEmitter", Optional = true, Note = "éclat (attribut EmitCount), L-466" },
+	},
+	Expected = { "FX_DisplayPlace" },
+}
+Models.DisplayPlaceFx = DisplayPlaceFx
+table.insert(Models.List, table.find(Models.List, WeaponShopCounter) or #Models.List + 1, DisplayPlaceFx)
+
+-- a523 (L-462, L-442) : éclat du SUPER LUCK! (FX_Unbox_SuperLuck, chef VFX v1263) et éclats des paliers du compteur
+-- « ×N LUCK » (FX_LuckTier_1 à _6) : mêmes règles que les autres effets de l'ouverture (Root facultatif).
+for _, name in { "FX_Unbox_SuperLuck", "FX_LuckTier_1", "FX_LuckTier_2", "FX_LuckTier_3", "FX_LuckTier_4", "FX_LuckTier_5", "FX_LuckTier_6" } do
+	table.insert(UnboxFx.Names :: { string }, name)
+	table.insert(UnboxFx.Expected :: { string }, name)
+end
 
 return Models

@@ -23,7 +23,7 @@ local Announce = {
 	NotifyKind = "Announce", -- catégorie du Notify de repli (comme Config/Unbox.AnnounceKind)
 
 	-- Client ------------------------------------------------------------------------------------------------------
-	Hold = 4, -- V0 : s à l'écran par annonce
+	Hold = 4, -- V0 : s à l'écran par annonce (sauf celle du lever du jour : DawnBoxHold)
 	Gap = 0.4, -- V0 : s entre deux annonces
 	MaxQueue = 4, -- V0 : annonces en attente au plus (au-delà, la plus ancienne en attente part)
 
@@ -38,6 +38,18 @@ local Announce = {
 	DayBoxEnabled = true, -- interrupteur de l'annonce de jour
 	DayBoxMinRarity = "Mythic", -- V0 : de jour, seulement Mythique ou plus (la nuit : Unbox.NightBoxMinRarity)
 	DayDetail = "Zone {zone} · be quick!", -- V0
+	-- a457 (L-335 point 2, Clément 24/11 ; Features.DawnBoxAnnounce / DawnBoxAnnounceDev) : au lever du jour (la nuit se
+	-- termine), une seule phrase pour la caisse la plus rare encore sur un rayon (seuil : Unbox.NightBoxMinRarity ; à
+	-- égalité, la zone la plus loin), sans Detail ; l'annonce de jour (DayBoxMinRarity) prend la même phrase, et plus
+	-- rien n'est annoncé quand les colis apparaissent la nuit. {rarity} = rareté en couleur, {zone} = zone du magasin.
+	DawnBoxText = "A {rarity} box is in Zone {zone}!",
+	DawnBoxHold = 5, -- s à l'écran pour l'annonce du lever du jour seulement (L-335, Clément 24/11 : « seulement 5 secondes »)
+	-- a457 (L-379, Clément 25/11 : « partir au bout de 5 secondes en défilement comme du texte par message ») : au bout de
+	-- DawnBoxHold s, le texte Message de l'annonce de l'aube monte et s'efface (AnnounceController), puis l'écran se ferme ;
+	-- Message reprend ensuite sa place et sa transparence (le bandeau n'est jamais déplacé). false = fermeture d'avant.
+	DawnBoxScroll = true,
+	ScrollTime = 0.6, -- V0 : s de la sortie qui défile
+	ScrollShift = -1, -- V0 : déplacement vertical de Message, en hauteurs de Message (négatif = vers le haut)
 
 	-- 3. Vol entre joueurs. {thief}, {victim}, {item} ; {rarity} = rareté en couleur, {a} = « a » ou « an ».
 	StealEnabled = true,
@@ -66,6 +78,20 @@ local Announce = {
 	CarryDetail = "Catch them before the safe zone!", -- V0
 	-- 5c. La valeur dans l'annonce 3 (vol chez un joueur) ; Detail vide (la valeur est dans la phrase).
 	StealValueText = "{thief} stole {a} {rarity} {item} worth {value} from {victim}!", -- V0
+
+	-- 6. a522 (L-455, Clément 26/11 : « mettre son dans le serveur de victoire » ; Features.ServerWinSound ou
+	-- ServerWinSoundDev ; CelebrationService, ServerWinController) : un objet ramené en zone safe fait entendre aux autres
+	-- joueurs un son 3D à l'endroit où le porteur passe la ligne safe (lui garde Heist_Escape, en 2D). Le son est à
+	-- Clément (Sound, dans ReplicatedStorage/Assets/Sounds, sous-dossiers compris) ; absent : muet. Le code règle la
+	-- portée de la copie jouée (valeurs de L-455) ; Clément règle SoundId et Volume.
+	ServerWin = {
+		Sound = "Heist_ServerWin", -- L-455 : ReplicatedStorage/Assets/Sounds/Heist/Heist_ServerWin
+		Gap = 2, -- L-455 : au plus un son toutes les 2 s sur tout le serveur
+		RollOffMode = "InverseTapered", -- L-455
+		RollOffMinDistance = 30, -- L-455
+		RollOffMaxDistance = 350, -- L-455
+		Lifetime = 10, -- V0 : s avant de retirer le point du son, s'il ne finit jamais
+	},
 }
 
 -- a486 (économie « B/T », Config/Economy ; V0 d'a486 gardé par le petit chef, 26/11) : ValueMinIncome est « le revenu

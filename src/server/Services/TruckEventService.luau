@@ -1397,7 +1397,11 @@ local function explode(truck: Truck, impactPoint: Vector3?, breaker: Player?)
 			widths[look] = width
 			local landing = landingPoint(from, center, width, taken)
 			table.insert(taken, { Position = landing, Width = width })
-			table.insert(spots, { CFrame = CFrame.new(landing), Tier = entry.Tier, Rarity = rarity, From = from })
+			-- a517 : zone du colis de zone (sa règle, référence = zone du camion) : étiquette « ZONE N » si plus haute.
+			local boxZone = if entry.Rule and ZoneBoxEverywhere and type(ZoneBoxEverywhere.ZoneOf) == "function"
+				then ZoneBoxEverywhere.ZoneOf(entry.Rule, truck.Zone)
+				else nil
+			table.insert(spots, { CFrame = CFrame.new(landing), Tier = entry.Tier, Rarity = rarity, From = from, Zone = boxZone })
 		end
 	end
 	local addShelf = if heistApi then heistApi.AddEventShelf else nil

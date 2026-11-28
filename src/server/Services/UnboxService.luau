@@ -86,6 +86,11 @@
 --       Chance du joueur pour l'amélioration d'un colis offert (GiveItem ; box : Tier, Zone, ItemId, Rarity).
 --       1 par défaut. Remplaçable comme GetAntiTheftDelay ; 0 = aucun cran. Ne doit pas yield. Une valeur qui
 --       n'est pas un nombre fini ≥ 0 est ignorée (chance 1).
+--   UnboxService.OfferSkip(player, itemUid, remaining) -> boolean
+--       a520 (L-410) : OpenBox(itemUid) sur son objet posé encore sous antivol (`remaining` s d'attente, à portée,
+--       pas tenu) : true si une offre pour passer le temps a été ouverte (MonetizationService : fenêtre d'achat
+--       d'Open Now), et le refus « ItemLocked » n'est pas envoyé. false par défaut. Remplaçable comme
+--       GetAntiTheftDelay ; ne doit pas yield ; une erreur vaut false.
 --   UnboxService.RollUpgrades(box, luck, rng?) -> { RarityId }
 --       Le tirage de l'amélioration (règle plus haut), sans rien changer : les raretés atteintes, cran par
 --       cran (vide : aucun cran). Pur, sans yield ; rng = un Random (celui du service par défaut).
@@ -146,6 +151,13 @@ local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Zones = require(Shared.Config.Zones)
 local ZoneBoxOdds = require(Shared.ZoneBoxOdds) -- a309
+-- a517 : étiquette « ZONE N » du colis offert (Shared/BoxZoneTag) ; protégé : absent (faux arbre d'un banc), aucune.
+local BoxZoneTag: any = (function(): any
+	local ok, module = pcall(function(): any
+		return require(Shared.BoxZoneTag)
+	end)
+	return if ok then module else nil
+end)()
 local Find = require(Shared.Contract.Find)
 
 local Net = require(Shared.Net.Net)
@@ -491,6 +503,19 @@ local function itemIncomeOf(entry: any): number
 		Formulas.ItemIncome(def.Id) * -- vague 76 : rareté, zone et rang de l'objet
 			Mutations.IncomeMultiplier(entry.Mutation, entry.Weight) -- vague 62 : poids compris (mutation brute : repli de l'ancienne taille)
 	)
+end
+
+-- a521 (L-405) : coup de chance de l'objet rangé (Shared/SecuredTier, chargé s'il est là : bancs sans lui) ; nil quand
+-- Features.SecuredCardV2 est coupé, ou en cas d'erreur.
+local function luckyOf(player: Player, itemId: string, mutation: any): boolean?
+	local module = Shared:FindFirstChild("SecuredTier")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, lucky = pcall(function(): boolean?
+		return (require(module) :: any).LuckyFor(player, itemId, mutation)
+	end)
+	return if ok and type(lucky) == "boolean" then lucky else nil
 end
 
 local function emitItem(list: { ItemListener }, player: Player, itemUid: string, itemId: string)
@@ -962,7 +987,9 @@ local function stowItem(player: Player, data: Data, payload: any)
 	-- a502 : et son revenu, celui de la boutique (mutation et poids compris).
 	local okIncome, income = pcall(itemIncomeOf, data.Items[itemUid])
 	local secured, securedErr = pcall(function()
-		Net.Server.ItemSecured:Fire(player, def.Id, if okIncome then income else nil)
+		-- a521 (L-405) : et son poids (Card.Weight), et le coup de chance (Shared/SecuredTier, Features.SecuredCardV2).
+		local stowed: any = data.Items[itemUid] or {}
+		Net.Server.ItemSecured:Fire(player, def.Id, if okIncome then income else nil, stowed.Weight, luckyOf(player, def.Id, stowed.Mutation))
 	end)
 	if not secured then
 		warn(`[UnboxService] ItemSecured vers {player.Name} : {securedErr}`)
@@ -1160,6 +1187,15 @@ local function takeFloorItem(player: Player, session: Session, itemUid: string, 
 	end
 	local unlockAt = entry.UnlockAt
 	if not isFinite(unlockAt) or serverNow() < unlockAt then
+		-- a520 (L-410) : E pendant l'antivol propose de passer le temps (UnboxService.OfferSkip, MonetizationService).
+		if isFinite(unlockAt) then
+			local ok, offered = pcall(UnboxService.OfferSkip, player, itemUid, unlockAt - serverNow())
+			if not ok then
+				warn(`[UnboxService] OfferSkip ({player.Name}, {itemUid}) : {offered}`)
+			elseif offered == true then
+				return
+			end
+		end
 		notify(player, MESSAGES.ItemLocked)
 		return
 	end
@@ -1231,6 +1267,12 @@ end
 
 function UnboxService.GetLuck(_player: Player, _box: Box): number
 	return 1
+end
+
+-- a520 (L-410) : offre pour passer l'antivol restant d'un objet posé (voir l'en-tête) ; remplaçable par
+-- MonetizationService (Open Now). false : aucune offre, le refus d'avant. Ne doit pas yield.
+function UnboxService.OfferSkip(_player: Player, _itemUid: string, _remaining: number): boolean
+	return false
 end
 
 function UnboxService.RollUpgrades(box: Box, luck: number, rng: Random?): { string }
@@ -1527,6 +1569,7 @@ export type ZoneBoxGift = {
 	Rarity: string, -- rareté tirée (celle de l'objet)
 	Chance: number, -- sa chance dans ce colis, en pour cent
 	StartRarity: string, -- la plus basse rareté possible de ce colis (montrée sur le colis au début de l'ouverture)
+	TagZone: number?, -- a517 : zone écrite « ZONE N » sur le colis (plus haute que bestZone, Shared/BoxZoneTag), sinon nil
 	Effect: string?, -- effet de la mutation de l'objet (Mutations), montré pendant l'ouverture
 }
 
@@ -1562,7 +1605,7 @@ function UnboxService.GiveZoneBoxItem(player: Player, rule: ZoneBoxOdds.Rule, be
 	log(`{player.Name} : colis de zone offert, zone {zone} : {item.Id} ({drawn.Id}, {string.format("%.3f", drawn.Chance)} %{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
 	discover(player, item.Id)
 	refreshInventory(player)
-	return itemUid, nil, item.Id, { Zone = zone, Rarity = drawn.Id, Chance = drawn.Chance, StartRarity = chances[1].Id, Effect = if mutation then mutation.Effect else nil }
+	return itemUid, nil, item.Id, { Zone = zone, Rarity = drawn.Id, Chance = drawn.Chance, StartRarity = chances[1].Id, Effect = if mutation then mutation.Effect else nil, TagZone = if BoxZoneTag then BoxZoneTag.Shown(zone, bestZone) else nil }
 end
 
 function UnboxService.GetWaiting(player: Player): { [string]: number }

@@ -49,11 +49,33 @@ local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 local UI = require(Shared:WaitForChild("Contract"):WaitForChild("UI"))
 local AnimPlayer = require(Shared:WaitForChild("Anim"):WaitForChild("AnimPlayer"))
 local MarkerSounds = require(Shared:WaitForChild("Anim"):WaitForChild("MarkerSounds"))
+-- a519 (L-448, Features.StrikeFeel) : fondu court et arrêt sur image à chaque Impact, sur la piste Unbox_* seule.
+-- Absent ou en erreur : comme avant.
+local strikeFeel: any = (function(): any
+	local module = Shared:WaitForChild("Anim"):FindFirstChild("StrikeFeel")
+	if module == nil or not module:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
 local UnboxPlan = require(Shared:WaitForChild("UnboxPlan"))
 -- a494b : chance finale à décimales (ShelfOpen/Logic.finalLuck, displayLuck) ; absent (faux arbres des bancs) : valeur brute
 local shelfLogicModule = script.Parent.Parent:FindFirstChild("ShelfOpen")
 shelfLogicModule = if shelfLogicModule then shelfLogicModule:FindFirstChild("Logic") else nil
 local ShelfLogic = if shelfLogicModule and shelfLogicModule:IsA("ModuleScript") then require(shelfLogicModule) :: any else nil
+-- a523 (L-442, Features.LuckTiers) : style des paliers du compteur « ×N LUCK » (ShelfOpen/LuckTierStyle) ; absent (bancs) : rien.
+local LuckTierStyle: any = (function(): any
+	local found, module = pcall(function(): any
+		local folder = script.Parent.Parent:FindFirstChild("ShelfOpen")
+		return if folder then folder:FindFirstChild("LuckTierStyle") else nil
+	end)
+	if not found or module == nil then
+		return nil
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else nil
+end)()
 -- a491 (L-429 point 2, Features.BiggerTrophies / BiggerTrophiesDev) : hauteur du colis de l'ouverture au départ
 -- (Config/DisplaySize.Trophies.OpenBoxHeight) ; nil = la hauteur de son modèle, comme avant. Module facultatif (bancs).
 local OPEN_BOX_HEIGHT: number? = nil
@@ -146,6 +168,14 @@ export type State = {
 	oddsTo: number,
 	oddsT: number, -- avancement du défilement, < 0 : aucun
 	luckShown: boolean, -- a462 (L-376) : BB_UnboxOdds.Odds montre la chance (« ×N LUCK »), pas la cote
+	-- a523 (L-462) : gains des coups (plan.Hits) montrés, Impacts avant le coup final, Impacts des actions passées,
+	-- billboards BB_UnboxLuckGain qui montent ; a523 (L-442) : style du palier du compteur, rebond de la cote.
+	hitsShown: number,
+	hitImpacts: number,
+	hitOffset: number,
+	gains: { { board: BillboardGui, t: number, from: Vector3 } },
+	tierStyle: any,
+	oddsPop: number,
 	oddsTicks: number,
 	upgradeLeft: number,
 	finalLeft: number, -- temps restant de la cote finale, après la révélation
@@ -810,12 +840,20 @@ local function showOdds(state: State, value: number)
 	state.odds = value
 	local text = state.oddsLabel
 	if text then
-		local luck = state.ctx.Plan.Luck or 1
-		text.Text = if state.luckShown
-			then UnboxPlan.luckText(
-				if ShelfLogic == nil then value else ShelfLogic.displayLuck(value, luck, ShelfLogic.finalLuck(luck, 0, state.ctx.Id .. "|" .. state.ctx.ItemId))
-			)
-			else UnboxPlan.oddsText(value)
+		local plan = state.ctx.Plan
+		local luck = plan.Luck or 1
+		if state.luckShown then
+			-- a523 (L-462) : avec les gains des coups, la vraie chance du moment, sans décalage d'affichage (a494).
+			local shown = if plan.Hits ~= nil or ShelfLogic == nil
+				then value
+				else ShelfLogic.displayLuck(value, luck, ShelfLogic.finalLuck(luck, 0, state.ctx.Id .. "|" .. state.ctx.ItemId))
+			text.Text = UnboxPlan.luckText(shown)
+			if state.tierStyle then
+				LuckTierStyle.Set(state.tierStyle, shown) -- a523 (L-442) : palier de la chance affichée
+			end
+		else
+			text.Text = UnboxPlan.oddsText(value)
+		end
 	end
 end
 
@@ -854,19 +892,150 @@ local function buildBoard(state: State)
 		state.oddsScale = popScale(state.oddsLabel)
 	end
 	showRarity(state, state.tier)
-	if UnboxPlan.luckClimbs() then
+	local plan = state.ctx.Plan
+	if UnboxPlan.luckClimbs() or plan.Hits ~= nil then
 		-- a462 (L-376) : pendant les coups, la chance de l'ouvreur (×1 au départ) ; sans chance dans le plan (caisse
 		-- exclusive, colis offert) : rien pendant les coups, la cote vient à l'éclatement.
+		-- a523 (L-462) : avec les gains des coups, la chance tirée (la base) dès le départ, puis chaque gain s'y ajoute.
 		state.luckShown = true
-		showOdds(state, 1)
-		if state.oddsLabel and state.ctx.Plan.Luck == nil then
-			state.oddsLabel.Visible = false
+		local text = state.oddsLabel
+		if text and LuckTierStyle and plan.Luck ~= nil then
+			-- a523 (L-442) : éclat d'un palier franchi au-dessus du colis.
+			state.tierStyle = LuckTierStyle.new(text, nil, function(): CFrame?
+				return CFrame.new(boxTop(state) + UP)
+			end, state.ctx.Folder)
+		end
+		showOdds(state, if plan.Hits ~= nil then plan.Luck or 1 else 1)
+		if text and plan.Luck == nil then
+			text.Visible = false
 		end
 	else
 		showOdds(state, UnboxPlan.startOdds(state.ctx.Plan)) -- a287 : Start de New.OddsClimb, sinon la plage d'avant
 	end
 	board.Parent = state.ctx.Folder
 	table.insert(state.created, board)
+end
+
+-- a523 (L-462) : gains des coups -------------------------------------------------------------------------------------
+
+local HIT = New.HitLuck
+
+-- Billboard du code aux noms proposés à Clément (BB_UnboxLuckGain : Amount, Streak, SuperLuck avec Label, Gain, Total).
+local function v0GainBoard(): BillboardGui
+	local board = Instance.new("BillboardGui")
+	board.Size = UDim2.fromScale(5, 2.4)
+	board.AlwaysOnTop = true
+	board.LightInfluence = 0
+	local function text(name: string, parent: Instance, y: number, h: number, color: Color3): TextLabel
+		local made = Instance.new("TextLabel")
+		made.Name = name
+		made.BackgroundTransparency = 1
+		made.Size = UDim2.fromScale(1, h)
+		made.Position = UDim2.fromScale(0, y)
+		made.TextScaled = true
+		made.Font = Enum.Font.GothamBlack
+		made.TextColor3 = color
+		made.TextStrokeTransparency = 0
+		made.Text = ""
+		made.Parent = parent
+		return made
+	end
+	text("Amount", board, 0.6, 0.4, Color3.fromRGB(120, 255, 140))
+	text("Streak", board, 0.3, 0.3, Color3.fromRGB(255, 200, 60)).Visible = false
+	local super = Instance.new("Frame")
+	super.Name = "SuperLuck"
+	super.BackgroundTransparency = 1
+	super.Size = UDim2.fromScale(1, 1)
+	super.Visible = false
+	super.Parent = board
+	text("Label", super, 0, 0.4, Color3.fromRGB(255, 220, 60)).Rotation = -3
+	text("Gain", super, 0.4, 0.3, Color3.fromRGB(120, 255, 140))
+	text("Total", super, 0.7, 0.3, WHITE)
+	return board
+end
+
+local function setLabel(root: Instance, name: string, value: string?)
+	local found = Find.path(root, name)
+	if found and found:IsA("TextLabel") then
+		found.Visible = value ~= nil
+		if value then
+			found.Text = value
+		end
+	end
+end
+
+-- « +0.2 LUCK », « x2 STREAK » et, pour un SUPER LUCK!, son cadre (« +2.0 », « ×3.40 »), FX_Unbox_SuperLuck et son son.
+local function showGain(state: State, amount: number, streak: number, super: boolean, total: number)
+	local board = billboard(HIT.GainBoard) or v0GainBoard()
+	board.Name = "UnboxLuckGain"
+	board.Adornee = state.anchor
+	local from = state.boardFrom + Vector3.new(0, 1.2, 0)
+	board.StudsOffsetWorldSpace = from
+	local gain = UnboxPlan.gainText(amount)
+	local found = Find.path(board, "SuperLuck")
+	local frame = if found and found:IsA("GuiObject") then found else nil
+	-- Sans cadre SuperLuck (billboard de Clément sans lui) : « SUPER LUCK! +2.0 » dans Amount.
+	setLabel(board, "Amount", if super and frame then nil elseif super then `{HIT.SuperText} +{gain}` else string.format(HIT.GainText, gain))
+	setLabel(board, "Streak", if streak >= 2 and not super then string.format(HIT.StreakText, streak) else nil)
+	if frame then
+		frame.Visible = super
+		if super then
+			setLabel(frame, "Label", HIT.SuperText)
+			setLabel(frame, "Gain", "+" .. gain)
+			setLabel(frame, "Total", "×" .. UnboxPlan.luckNumber(total))
+		end
+	end
+	board.Parent = state.ctx.Folder
+	table.insert(state.created, board)
+	local timed: Timed = { inst = board :: Instance, left = HIT.GainShow * (if super then 2 else 1) }
+	table.insert(state.timed, timed)
+	table.insert(state.gains, { board = board, t = 0, from = from })
+	if super then
+		local top = boxTop(state)
+		spawnFx(state, HIT.SuperFx, CFrame.new((state.floor.Position + top) / 2), nil, nil, true)
+		sound(state, HIT.SuperSound)
+	end
+end
+
+-- Les gains du plan à montrer une fois passé l'Impact `impact` de la scène (UnboxPlan.hitsUpTo) : ceux qui tombent ici
+-- sont montrés ensemble, et la chance défile jusqu'à base × (1 + gains montrés).
+local function showHits(state: State, impact: number)
+	local plan = state.ctx.Plan
+	local hits = plan.Hits
+	if hits == nil or not state.luckShown then
+		return
+	end
+	local upTo = UnboxPlan.hitsUpTo(#hits, impact, state.hitImpacts)
+	if upTo <= state.hitsShown then
+		return
+	end
+	local base = plan.Luck or 1
+	local sum, streak, super = 0, 0, false
+	for index = state.hitsShown + 1, upTo do
+		local kind = hits[index]
+		sum += UnboxPlan.hitFactor(kind)
+		super = super or kind == "S"
+		streak = math.max(streak, tonumber(kind) or 0)
+	end
+	state.hitsShown = upTo
+	local total = UnboxPlan.hitsFinal(base, hits, upTo)
+	rollLuck(state, total)
+	if sum > 0 then
+		showGain(state, base * sum, streak, super, total)
+	end
+end
+
+local function stepGains(state: State, dt: number)
+	for index = #state.gains, 1, -1 do
+		local entry = state.gains[index]
+		entry.t += dt
+		if entry.board.Parent == nil then
+			table.remove(state.gains, index)
+		else
+			local f = math.min(entry.t / HIT.GainShow, 1)
+			entry.board.StudsOffsetWorldSpace = entry.from + Vector3.new(0, HIT.GainRise * (1 - (1 - f) * (1 - f)), 0)
+		end
+	end
 end
 
 local function dropMark(state: State)
@@ -1182,6 +1351,13 @@ local function burst(state: State)
 	if state.luckShown then
 		-- a462 (L-376) : la chance laisse la place à la cote, qui part de Start et monte sur les silhouettes.
 		state.luckShown = false
+		if state.tierStyle then
+			LuckTierStyle.Clear(state.tierStyle) -- a523 (L-442) : la cote reprend le style d'avant
+			state.tierStyle = nil
+			if state.oddsScale then
+				state.oddsScale.Scale = 1
+			end
+		end
 		state.oddsT = -1
 		if text then
 			text.Visible = climbs
@@ -1217,7 +1393,10 @@ local function momentFort(state: State)
 		return
 	end
 	-- a287 : New.OddsClimb, l'action entière sur la courbe qui finit à la vraie cote ; sinon la plage de la rareté.
-	if state.luckShown then
+	if state.luckShown and plan.Hits ~= nil then
+		-- a523 (L-462) : au moment fort, tous les gains de l'action sont montrés (même si l'animation a eu moins d'Impacts).
+		showHits(state, state.hitOffset + #state.moves[state.index].Action.Impacts)
+	elseif state.luckShown then
 		rollLuck(state, UnboxPlan.luckHit(plan, state.index, 1, 1)) -- a462 (L-376) : la chance monte
 	else
 		rollOdds(state, if UnboxPlan.climbs() then UnboxPlan.climbHit(plan, state.index, 1, 1) else UnboxPlan.oddsAt(plan, state.index))
@@ -1294,6 +1473,8 @@ local function onImpact(state: State)
 	end
 	if strong then
 		momentFort(state)
+	elseif not state.strong and state.luckShown and state.ctx.Plan.Hits ~= nil then
+		showHits(state, state.hitOffset + state.impacts) -- a523 (L-462) : les gains de cet Impact
 	elseif not state.strong and state.luckShown then
 		-- a462 (L-376) : chaque coup fait monter la chance d'un pas.
 		rollLuck(state, UnboxPlan.luckHit(state.ctx.Plan, state.index, state.impacts, #action.Impacts))
@@ -1307,6 +1488,10 @@ end
 local function startAction(state: State, index: number)
 	local ctx = state.ctx
 	state.index = index
+	state.hitOffset = 0 -- a523 (L-462) : Impacts attendus des actions d'avant
+	for previous = 1, index - 1 do
+		state.hitOffset += #state.moves[previous].Action.Impacts
+	end
 	state.phase = "Action"
 	state.t = 0
 	state.impacts = 0
@@ -1359,6 +1544,9 @@ local function startAction(state: State, index: number)
 	local track = loaded :: AnimationTrack
 	table.insert(state.connections, track:GetMarkerReachedSignal("Impact"):Connect(function()
 		if state.track == track and not state.destroyed then
+			if strikeFeel then
+				pcall(strikeFeel.impact, action.Anim, track)
+			end
 			onImpact(state)
 		end
 	end))
@@ -1376,7 +1564,7 @@ local function startAction(state: State, index: number)
 	state.track = track
 	state.mode = "Anim"
 	pcall(function()
-		track:Play(0.1)
+		track:Play(if strikeFeel then strikeFeel.fade(action.Anim, 0.1) else 0.1)
 		track:AdjustSpeed(math.max(New.ActionSpeed, 0.1))
 	end)
 end
@@ -1930,6 +2118,12 @@ function Unbox.Begin(ctx: Context): State
 		oddsTo = 1,
 		oddsT = -1,
 		luckShown = false,
+		hitsShown = 0,
+		hitImpacts = 0,
+		hitOffset = 0,
+		gains = {},
+		tierStyle = nil,
+		oddsPop = 1,
 		oddsTicks = 0,
 		upgradeLeft = 0,
 		finalLeft = 0,
@@ -1982,6 +2176,10 @@ function Unbox.Begin(ctx: Context): State
 		smoked = false,
 		created = { anchor },
 	}
+	-- a523 (L-462) : Impacts attendus avant le coup final (ceux de la Config : les mêmes chez tous les joueurs).
+	for index = 1, #state.moves - 1 do
+		state.hitImpacts += #state.moves[index].Action.Impacts
+	end
 	buildBox(state)
 	buildBoard(state)
 	placeCharacter(state)
@@ -2032,13 +2230,25 @@ local function stepOdds(state: State, dt: number)
 			end
 		end
 		local scale = state.oddsScale
+		state.oddsPop = 1 + (New.OddsPop - 1) * math.sin(math.pi * f)
 		if scale then
-			scale.Scale = 1 + (New.OddsPop - 1) * math.sin(math.pi * f)
+			scale.Scale = state.oddsPop
 		end
 		if f >= 1 then
 			state.oddsT = -1
+			state.oddsPop = 1
 		end
 	end
+	local styler = state.tierStyle
+	if styler then
+		-- a523 (L-442) : mouvement du palier, et sa taille (TextScale × rebond) dans le même UIScale que le gonflement.
+		LuckTierStyle.Step(styler, dt)
+		local scale = state.oddsScale
+		if scale then
+			scale.Scale = state.oddsPop * LuckTierStyle.Scale(styler)
+		end
+	end
+	stepGains(state, dt) -- a523 (L-462)
 	if state.upgradeLeft > 0 then
 		state.upgradeLeft -= dt
 		local upgrade = state.upgradeLabel
@@ -2381,6 +2591,10 @@ function Unbox.GetState(state: State): { [string]: any }
 		OddsText = if text then text.Text else nil,
 		OddsVisible = text ~= nil and text.Visible, -- a287
 		LuckShown = state.luckShown, -- a462 (L-376)
+		HitsShown = state.hitsShown, -- a523 (L-462)
+		HitImpacts = state.hitImpacts,
+		Gains = #state.gains,
+		LuckTier = if state.tierStyle then state.tierStyle.index else nil, -- a523 (L-442)
 		RarityText = if rarityText and rarityText.Visible then rarityText.Text else nil,
 		Upgrade = upgrade ~= nil and upgrade.Visible,
 		BoxScale = state.tierScale,

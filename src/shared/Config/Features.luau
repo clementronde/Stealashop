@@ -283,6 +283,26 @@ local Features = {
 	SecuredFireworks = false,
 	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SecuredFireworksDev = true,
+	-- a521 (L-405, Clément 25 et 26/11) : carte ITEM SECURED spectaculaire (Controllers/Escape/SecuredCard, réglages
+	-- Config/SecuredCard) : l'objet en 3D dans Card.Preview, le sunburst (Rays, RaysBack, Burst, Rain) teint à la couleur
+	-- de la rareté et réglé par palier (Normal, Légendaire, Grand : Mythique et plus, gros objet, coup de chance),
+	-- Card.TierScale et Card.RarityTag aux gros paliers ; le serveur dit le coup de chance (ItemSecured, 4e argument).
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = la carte d'avant (icône).
+	SecuredCardV2 = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SecuredCardV2Dev = true,
+	-- a521 (L-465, Clément 26/11) : à l'arrivée en zone safe, UI_Escape.Flash plein sur 2 images puis effacé en 0,15 s, à
+	-- la couleur de la rareté de l'objet ; Card 0,1 s après, le son 65 ms après (Config/SecuredCard.LineFlash).
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = le flash d'avant (UiMotion.SafeFlash ou HeistTension.Flash).
+	SafeLineFlash = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	SafeLineFlashDev = true,
+	-- a521 (L-405, Clément 25/11 : « oui les plus grosses ») : un objet ramené de très grande valeur (ou un Secret) est
+	-- annoncé sur les autres serveurs (MessagingService, Services/CrossServerAnnounce, Config/SecuredCard.Cross).
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = annonces sur le serveur actuel seulement, comme avant.
+	CrossServerAnnounce = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	CrossServerAnnounceDev = true,
 	-- a475 (L-372, Clément 25/11) : annonces de valeur à tout le serveur (UI_Announce, Shared/Announce, CelebrationService) :
 	-- objet de grande valeur ramené en zone safe, objet de grande valeur en fuite, valeur dans le texte du vol chez un
 	-- joueur (Config/Announce.Value*). Interrupteur PROD (partout) : false (règle C2) ; false = annonces d'avant.
@@ -325,6 +345,23 @@ local Features = {
 	UnboxClimbMatchesItem = false,
 	-- a462 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	UnboxClimbMatchesItemDev = true,
+	-- a523 (L-462, Clément 26/11 : « chaque coup de l'animation fait monter la luck ») : pendant l'ouverture d'un colis de
+	-- rayon, la chance tirée est la base, puis des coups font monter la chance (« +0.2 LUCK », séries « x2 STREAK »,
+	-- rarement « SUPER LUCK! ») ; tout est tiré d'avance par le serveur AVANT l'objet, et l'objet est tiré avec la chance
+	-- finale (celle qu'on voit à la fin des coups). Config/Unbox.New.HitLuck, Shared/UnboxPlan (hitsDraw, hitsBonus),
+	-- StoreHeistService.startReveal, Controllers/Reveal/Unbox (BB_UnboxLuckGain). Interrupteur PROD (partout) : false
+	-- (règle C2 : pas encore de test humain) ; false = la chance d'avant (L-376 : ×1 qui monte jusqu'à la chance tirée).
+	UnboxHitLuck = false,
+	-- a523 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	UnboxHitLuckDev = true,
+	-- a523 (L-442, Clément 27/11 : « plein de versions en fonction des paliers de luck ») : le compteur « ×N LUCK »
+	-- (BB_ShelfOpen.Row.Luck, BB_UnboxOdds.Odds) prend le style du palier de Clément (Assets/UI/LuckTiers/Tier_NN : dernier
+	-- MinLuck ≤ la chance affichée), au format ×9.99, ×99.9, ×999, ×1.5K, ×250M, ×3.2T ; au passage d'un palier en montée,
+	-- rebond Pop et FX_LuckTier_<BurstLevel>. Shared/LuckTiers, Controllers/ShelfOpen/LuckTierStyle. Interrupteur PROD
+	-- (partout) : false (règle C2) ; false = « ×%.2f LUCK » blanc, comme avant.
+	LuckTiers = false,
+	-- a523 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	LuckTiersDev = true,
 	-- a486 (Cantin, 25/11 ; note d'a479 « économie B/T ») : table 2 de l'économie (Config/Economy : raretés × 60, zone 6 à
 	-- Speed 30T, tapis à 6 crédits par seconde et 25 niveaux, prix refaits, classements à part, profils convertis au
 	-- chargement dans les deux sens). Lu par Config/Economy seul, au chargement : chaque module de Config prend ses
@@ -463,6 +500,91 @@ local Features = {
 	SkillTreePhoneZoom = false,
 	-- a508 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SkillTreePhoneZoomDev = true,
+	-- a518 (L-437, Clément 27/11 : « les vigiles doivent être 1,5 fois plus gros que les joueurs ») : chaque vigile de
+	-- magasin et de nuit en jeu est mis à Config/Guards.Scale.Size (Model:ScaleTo du clone, jamais le modèle de Clément),
+	-- agent du chemin plafonné (Guard/Scale). Interrupteur PROD : false (règle C2) ; false = la taille des modèles.
+	GuardScale = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardScaleDev = true,
+	-- a518 (L-438, Clément 27/11 : « les vigiles doivent tourner dans le magasin au lieu qu'ils apparaissent de nulle
+	-- part ») : un vigile par magasin PNJ fait sa ronde dedans (Guard/DayPatrol, Config/Guards.DayPatrol) ; c'est lui qui
+	-- part au vol, et il reprend sa ronde en rentrant. PROD : false (C2) ; false = le vigile qui sort du GuardSpawn au vol.
+	GuardDayPatrol = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardDayPatrolDev = true,
+	-- a518 (L-426, Clément 25/11 et 26/11) : attrapé par un vigile de magasin, le voleur part en ragdoll assez loin
+	-- (Guard/CatchRagdoll, Config/Guards.CatchRagdoll), l'objet reste au sol et le vigile rentre au GuardSpawn ; il
+	-- revient si quelqu'un reprend l'objet. PROD : false (C2) ; false = la poussée d'avant, le vigile garde l'objet.
+	GuardCatchRagdoll = false,
+	-- a518 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	GuardCatchRagdollDev = true,
+	-- a519 (L-448, Clément 26/11, repasse animation point 12) : coups plus secs et course portée calée, sur le joueur local
+	-- (Shared/Anim/StrikeFeel, valeurs Config/AnimFeel) : fondu court au lancement des coups (animations au marqueur Impact),
+	-- arrêt sur image de la seule piste du coup à son marqueur Impact, CarryRun jouée à la vitesse au sol. Les animations de
+	-- Clément ne sont pas retouchées. Interrupteur PROD (partout) : false (règle C2) ; false = fondu de 0,1 s, aucun arrêt au
+	-- marqueur Impact, CarryRun à sa vitesse d'origine, comme avant.
+	StrikeFeel = false,
+	-- a519 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	StrikeFeelDev = true,
+	-- a520 (L-410, Clément 25/11 : « skip le temps en cliquant sur E ») : E sur son objet posé encore sous antivol ouvre
+	-- la fenêtre d'achat d'Open Now (palier choisi par le serveur selon l'attente de CET objet, qui reçoit le temps
+	-- payé) au lieu de ne rien proposer (UnboxController, UnboxService.OfferSkip, MonetizationService). Seulement avec la
+	-- boutique Robux allumée (Features.RobuxShop). Interrupteur PROD (partout) : false (règle C2) ; false = « Take »
+	-- caché tant que l'antivol tourne, comme avant. Lu au moment de l'appui, client et serveur
+	-- (Monetization.OpenNowOnLocked) : pourrait entrer dans Config/LiveFeatures.Hot (pas fait).
+	OpenNowOnLocked = false,
+	-- a520 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	OpenNowOnLockedDev = true,
+	-- a457 (L-335 point 2, Clément 24/11) : l'annonce des caisses rares part au lever du jour (fin de la nuit), une seule
+	-- phrase « A LEGENDARY box is in Zone 6! » (Config/Announce.DawnBoxText, la plus rare encore sur un rayon), plus quand
+	-- les colis apparaissent la nuit ; l'annonce de jour (Mythique et plus) prend la même phrase. Interrupteur PROD
+	-- (partout) : false (règle C2 : pas encore de test humain, T-299) ; false = annonce de nuit groupée, comme avant.
+	DawnBoxAnnounce = false,
+	-- a457 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DawnBoxAnnounceDev = true,
+	-- a457 (L-335 point 3, Clément 24/11) : les panneaux BB_ShopInfo des boutiques des autres s'allument dès que le joueur
+	-- local est dans une zone `SafeZone` (Shared/SafeZone), et plus seulement à PvP.ScoutDistance de la boutique
+	-- (PvPController) ; dans le couloir, la règle d'avant. Interrupteur PROD (partout) : false (règle C2, T-299) ;
+	-- false = panneau à PvP.ScoutDistance seulement, comme avant.
+	ShopInfoSafeZone = false,
+	-- a457 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ShopInfoSafeZoneDev = true,
+	-- a522 (L-455, Clément 26/11) : un objet ramené en zone safe fait entendre aux autres joueurs le son de victoire du
+	-- serveur Heist_ServerWin, en 3D à l'endroit où le porteur passe la ligne safe (Config/Announce.ServerWin : au plus un
+	-- toutes les 2 s ; CelebrationService, ServerWinController). Interrupteur PROD (partout) : false (règle C2 : pas encore
+	-- de test humain, T-395) ; false = comme avant (seul le porteur entend Heist_Escape).
+	ServerWinSound = false,
+	-- a522 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	ServerWinSoundDev = true,
+	-- a469 (Cantin, 25/11) : le revenu de l'objet tenu en main (BB_HeldIncome, « $300/s ») vu par tous les joueurs, pas
+	-- seulement le porteur (Config/HeldItem.IncomeForAll : HeldItemService pose le $/s sur le Tool, HeldIncomeController
+	-- le montre au-dessus de l'objet de chacun). Interrupteur PROD (partout) : false (règle C2 : pas encore de test
+	-- humain) ; false = le porteur seul voit son revenu, comme avant.
+	HeldIncomeAll = false,
+	-- a469 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	HeldIncomeAllDev = true,
+	-- a524 (L-447, Clément 26/11, repasse point 11) : les billets d'un gain ponctuel (récompense, prime de l'index) et
+	-- des gains hors ligne réclamés s'écartent d'abord (Config/HeistFeel.BillFly.SpreadTime, Quad Out) puis volent au
+	-- compteur ; à l'arrivée du premier, CashRow.CashIcon rebondit (BillFly.IconPop) avec le sursaut du nombre
+	-- (GainController.billFly). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain, T-387) ;
+	-- false = billets qui volent tout de suite, sans rebond de l'icône, gains hors ligne sans billets, comme avant.
+	GainFlyToCounter = false,
+	-- a524 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	GainFlyToCounterDev = true,
+	-- a524 (L-466, Clément 26/11) : objet posé sur un présentoir chez le joueur local (GainController.incomeFly) : l'objet
+	-- blanc puis ses couleurs (Highlight), « +$X/s » tenu plus longtemps au-dessus de lui, étoiles FX_DisplayPlace de
+	-- Clément, puis UI_HUD Income qui saute à l'arrivée (Config/Displayed.PlaceMoment). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain, T-406) ; false = « +$X/s » qui vole après 0,35 s, comme avant.
+	DisplayPlaceMoment = false,
+	-- a524 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DisplayPlaceMomentDev = true,
+	-- a517 (demande de Cantin, 27/11) : étiquette « ZONE N » sur un colis d'une zone plus haute que celle de l'endroit
+	-- (rayon d'événement du camion ou du fourgon) ou, pour un colis offert hors du couloir (roue, cadeaux de temps de jeu),
+	-- que la meilleure zone du joueur (Shared/BoxZoneTag : attribut BoxZone du colis, élément ZoneTag de BB_Box et de
+	-- BB_UnboxOdds, repli du code sans lui). Interrupteur PROD (partout) : false (règle C2) ; false = aucune étiquette.
+	BoxZoneTag = false,
+	-- a517 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	BoxZoneTagDev = true,
 }
 
 export type Features = typeof(Features)
