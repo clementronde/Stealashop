@@ -435,6 +435,21 @@ local Features = {
 	BiggerTrophies = false,
 	-- a491 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	BiggerTrophiesDev = true,
+	-- a536 (L-502 et L-504, recette du chef animation du 28/11 ; Config/Unbox.New StandFaceGap à EndStandMinGap,
+	-- Controllers/Reveal/Unbox) : espacement v2 de l'ouverture. Le colis garde la taille de son BOX_ pendant les coups,
+	-- le perso se tient à la demi-largeur du colis + 2 studs, et le colis grossit (OpenBoxHeight × UpgradeGrow) dans le
+	-- nuage de la téléportation qui précède Unbox_Slam ; à l'éclatement, le perso va au sol à 4,5 studs au moins de
+	-- l'objet, tourné vers lui (au lieu du recul). Interrupteur PROD (partout) : false (règle C2 : pas encore de test
+	-- humain) ; false = colis grossi dès le départ, StandSide, recul, comme avant.
+	UnboxSpacingV2 = false,
+	-- a536 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	UnboxSpacingV2Dev = true,
+	-- a536 (L-508, Controllers/Reveal/Unbox.takeTool et poseTool) : un TOOL_Unbox_* livré en Tool est posé dans la main
+	-- avec son Grip (Handle = RightGripAttachment × Grip⁻¹, comme Roblox pour un Tool en main). Interrupteur PROD
+	-- (partout) : false (règle C2) ; false = un Tool n'est pas posé (seuls les Model et les pièces le sont), comme avant.
+	UnboxToolGrip = false,
+	-- a536 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	UnboxToolGripDev = true,
 	-- a496 (règle de Cantin, 26/11 ; Config/DisplaySize, étapes 1 à 3) : le minimum de taille par rareté (facteur du modèle
 	-- médian, minimum 4, 5 ou 7 studs, grossissement par le poids) vaut partout : en main (HeldItemService), porté
 	-- (CarryService), au sol (DisplayService.BuildFloorItem) et à l'ouverture dans le magasin PNJ (StoreHeistService :

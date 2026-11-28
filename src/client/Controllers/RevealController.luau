@@ -1363,6 +1363,7 @@ local function beginUnbox(scene: Scene, slotFrame: CFrame, aisleDir: Vector3)
 		SizeClass = payload.SizeClass,
 		ItemId = payload.ItemId,
 		ItemScale = scene.startScale,
+		ItemFinalScale = payload.Scale, -- a536 (L-504) : la place de fin du perso suit la taille finale de l'objet
 		Plan = plan,
 		LowEnd = lowEnd(),
 		Folder = fxFolder(),
