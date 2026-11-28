@@ -21,6 +21,7 @@
 --   ItemWeight.TierChances(luck) -> { number }         chance de chaque palier de Config/Weight.Tiers, pour cent
 --   ItemWeight.SizeChance(sizeId, luck) -> number      chance (pour cent) de tirer ce palier de taille
 --   ItemWeight.Sanitize(value) -> number?              poids lu (profil, attribut) ramené à 1…10 000 ; nil si illisible
+--   ItemWeight.IsValidKg(kg) -> boolean                a527 : poids dans un palier de Config/Weight.Tiers (1 à 10 000 kg)
 --   ItemWeight.LegacyFor(sizeId?) -> number            poids d'un objet d'avant le poids (Config/Weight.Legacy)
 --   ItemWeight.Effective(weight?, sizeId?) -> number   le poids s'il est lisible, sinon LegacyFor(sizeId)
 --   ItemWeight.CappedScale(kg, cap) -> number          ScaleFor(kg), au plus cap
@@ -214,6 +215,26 @@ function ItemWeight.Sanitize(value: any): number?
 		return nil
 	end
 	return math.clamp(value, Weight.Min, Weight.Max)
+end
+
+-- a527 (Cantin, 28/11 : l'admin choisit le poids de son prochain colis) : vrai si `kg` est un poids qu'un tirage peut
+-- donner, c'est-à-dire un nombre fini dans un palier de Config/Weight.Tiers (Min compris, Max non compris ; un palier
+-- Min = Max vaut ce poids exact : 10 000 kg). Le seul contrôle du poids demandé (AdminService) ; a528 l'étendra
+-- au-dessus de 10 000 kg.
+function ItemWeight.IsValidKg(kg: any): boolean
+	if not finite(kg) or kg < Weight.Min or kg > Weight.Max then
+		return false
+	end
+	for _, tier in Weight.Tiers do
+		if tier.Max <= tier.Min then
+			if kg == tier.Min then
+				return true
+			end
+		elseif kg >= tier.Min and kg < tier.Max then
+			return true
+		end
+	end
+	return false
 end
 
 function ItemWeight.LegacyFor(sizeId: any): number

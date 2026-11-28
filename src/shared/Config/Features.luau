@@ -586,6 +586,12 @@ local Features = {
 	BoxZoneTag = false,
 	-- a517 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
 	BoxZoneTagDev = true,
+	-- a527 (Cantin, 28/11, pour une vidéo) : commande d'admin ForceNextUnbox (Config/Admin, AdminService) : l'admin choisit
+	-- l'objet, le poids et la mutation de SON prochain colis de rayon (StoreHeistService.SetAdminContentOverride, avant
+	-- l'accroche du tuto) ; toute l'ouverture normale se joue. Interrupteur PROD (partout) : false ; false = commande refusée.
+	AdminForceUnbox = false,
+	-- a527 : la même chose allumée dans le jeu DEV (et TEST) seulement (Config/ProductIds.IsDev).
+	AdminForceUnboxDev = true,
 }
 
 export type Features = typeof(Features)
