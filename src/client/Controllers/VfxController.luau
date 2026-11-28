@@ -337,7 +337,8 @@ end
 
 -- Copie de `name` posée à `frame` : Emit(EmitCount × facteur) de chaque émetteur, lumières allumées
 -- puis éteintes en FadeTime, détruite après Duration. Renvoie la copie, ou nil.
-local function burst(name: string, frame: CFrame): Model?
+-- a521 (L-396 a) : `skip` = noms d'émetteurs qui ne partent pas (FX_Escape avec les feux d'artifice du monde).
+local function burst(name: string, frame: CFrame, skip: { string }?): Model?
 	local source = template(Vfx.FxFolder, name, "Model")
 	if source == nil then
 		return nil
@@ -351,7 +352,9 @@ local function burst(name: string, frame: CFrame): Model?
 		if descendant:IsA("ParticleEmitter") then
 			local emitter = descendant :: ParticleEmitter
 			emitter.Enabled = false
-			table.insert(emitters, emitter)
+			if skip == nil or table.find(skip, emitter.Name) == nil then
+				table.insert(emitters, emitter)
+			end
 		elseif descendant:IsA("Light") then
 			local light = descendant :: Light
 			light.Enabled = false
@@ -393,14 +396,14 @@ local function burst(name: string, frame: CFrame): Model?
 	return copy
 end
 
-function VfxController.Escape(): Model?
+function VfxController.Escape(skip: { string }?): Model?
 	local character = localPlayer.Character
 	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
 	if root == nil or not root:IsA("BasePart") then
 		return nil
 	end
 	local position = (root :: BasePart).Position - Vector3.new(0, Vfx.Escape.FootOffset, 0)
-	return burst(Vfx.Escape.Model, CFrame.new(position))
+	return burst(Vfx.Escape.Model, CFrame.new(position), if type(skip) == "table" then skip else nil)
 end
 
 -- a475 (L-371) : points FireworksPoint de la map jouée (dans Workspace, aucun ancêtre en « _ »), triés par nom.

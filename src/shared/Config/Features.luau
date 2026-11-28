@@ -283,6 +283,26 @@ local Features = {
 	SecuredFireworks = false,
 	-- a475 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
 	SecuredFireworksDev = true,
+	-- a521 (L-405, Clément 25 et 26/11) : carte ITEM SECURED spectaculaire (Controllers/Escape/SecuredCard, réglages
+	-- Config/SecuredCard) : l'objet en 3D dans Card.Preview, le sunburst (Rays, RaysBack, Burst, Rain) teint à la couleur
+	-- de la rareté et réglé par palier (Normal, Légendaire, Grand : Mythique et plus, gros objet, coup de chance),
+	-- Card.TierScale et Card.RarityTag aux gros paliers ; le serveur dit le coup de chance (ItemSecured, 4e argument).
+	-- Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain) ; false = la carte d'avant (icône).
+	SecuredCardV2 = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	SecuredCardV2Dev = true,
+	-- a521 (L-465, Clément 26/11) : à l'arrivée en zone safe, UI_Escape.Flash plein sur 2 images puis effacé en 0,15 s, à
+	-- la couleur de la rareté de l'objet ; Card 0,1 s après, le son 65 ms après (Config/SecuredCard.LineFlash).
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = le flash d'avant (UiMotion.SafeFlash ou HeistTension.Flash).
+	SafeLineFlash = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	SafeLineFlashDev = true,
+	-- a521 (L-405, Clément 25/11 : « oui les plus grosses ») : un objet ramené de très grande valeur (ou un Secret) est
+	-- annoncé sur les autres serveurs (MessagingService, Services/CrossServerAnnounce, Config/SecuredCard.Cross).
+	-- Interrupteur PROD (partout) : false (règle C2) ; false = annonces sur le serveur actuel seulement, comme avant.
+	CrossServerAnnounce = false,
+	-- a521 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
+	CrossServerAnnounceDev = true,
 	-- a475 (L-372, Clément 25/11) : annonces de valeur à tout le serveur (UI_Announce, Shared/Announce, CelebrationService) :
 	-- objet de grande valeur ramené en zone safe, objet de grande valeur en fuite, valeur dans le texte du vol chez un
 	-- joueur (Config/Announce.Value*). Interrupteur PROD (partout) : false (règle C2) ; false = annonces d'avant.

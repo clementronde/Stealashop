@@ -49,6 +49,10 @@
 -- des cartes, tous remis ensuite), la transparence des bords de UI_Chase et RunBanner pendant la poursuite,
 -- Camera.FieldOfView, et dans UI_Escape : Enabled, Flash.BackgroundTransparency, Title.Rotation, Title.Text
 -- et Subtitle.Text (remis), BoxIcon.Image et BoxIcon.Visible (a507, remis). Aucun objet n'est laissé une fois l'animation finie.
+-- a521 (28/11) : Card.Weight.Text (poids de l'objet, remis) ; Veil, Card et SecuredFx cachés pendant une révélation
+-- (remis) ; Flash.BackgroundColor3 et Card.Visible avec Features.SafeLineFlash (L-465, remis) ; la carte de
+-- Features.SecuredCardV2 (L-405) est à Escape/SecuredCard, arrêtée par resetEscape ; FX_Escape sans
+-- Config/SecuredCard.EscapeSkip avec les feux d'artifice du monde (L-396).
 --
 -- API (client) :
 --   UiFeelController.Escape(tier?, rarity?, itemId?)  joue l'arrivée en zone safe (aussi pour un test en Studio)
@@ -150,6 +154,7 @@ type Escape = {
 	texts: { [TextLabel]: string },
 	visibles: { [GuiObject]: boolean },
 	images: { [Instance]: string }, -- vague 51 (a165) : Image de Clément sur BoxIcon, remise par resetEscape
+	colors: { [GuiObject]: Color3 }, -- a521 (L-465) : BackgroundColor3 de Clément sur Flash, remise par resetEscape
 }
 local escape: Escape? = nil
 local escaping = false -- champ de vision de l'arrivée en zone safe en cours
@@ -469,6 +474,55 @@ local function escapeFov(add: number?, inInfo: TweenInfo?, outInfo: TweenInfo?)
 	end)
 end
 
+-- a521 : modules chargés s'ils sont là (bancs sans eux : rien de nouveau). Escape/SecuredCard (L-405, carte
+-- spectaculaire), Shared/SecuredTier (interrupteurs), Shared/ItemWeight (poids de Card.Weight), Config/SecuredCard.
+local optionalModules: { [string]: any } = {}
+local function optionalModule(key: string, find: () -> Instance?): any
+	local known = optionalModules[key]
+	if known == nil then
+		known = false
+		local ok, module = pcall(find)
+		if ok and module ~= nil and module:IsA("ModuleScript") then
+			local okRequire, result = pcall(require, module)
+			if okRequire and type(result) == "table" then
+				known = result
+			end
+		end
+		optionalModules[key] = known
+	end
+	return if known == false then nil else known
+end
+local function securedCard(): any
+	return optionalModule("SecuredCard", function(): Instance?
+		local folder = script.Parent:FindFirstChild("Escape")
+		return if folder then folder:FindFirstChild("SecuredCard") else nil
+	end)
+end
+local function securedTier(): any
+	return optionalModule("SecuredTier", function(): Instance?
+		return Shared:FindFirstChild("SecuredTier")
+	end)
+end
+local function securedSettings(): any
+	return optionalModule("SecuredCardConfig", function(): Instance?
+		return Shared:WaitForChild("Config"):FindFirstChild("SecuredCard")
+	end)
+end
+local function itemWeight(): any
+	return optionalModule("ItemWeight", function(): Instance?
+		return Shared:FindFirstChild("ItemWeight")
+	end)
+end
+-- Interrupteur `name` (Features[name] partout, ou Features[name .. "Dev"] dans le jeu DEV) ; false sans SecuredTier.
+local function switchOn(name: string): boolean
+	local tier = securedTier()
+	if tier == nil then
+		return false
+	end
+	local ok, on = pcall(tier.On, name)
+	return ok and on == true
+end
+
 -- Remet UI_Escape comme Clément l'a fait : UIScale passagers détruits, Rotation de Title et
 -- transparence de Flash d'origine.
 local function resetEscape()
@@ -507,6 +561,15 @@ local function resetEscape()
 		if object.Parent ~= nil then
 			(object :: any).Image = image
 		end
+	end
+	for object, color in state.colors do
+		if object.Parent ~= nil then
+			object.BackgroundColor3 = color
+		end
+	end
+	local card = securedCard()
+	if card then
+		card.Stop()
 	end
 end
 
@@ -607,7 +670,7 @@ end
 local function newEscape(screen: ScreenGui, kind: string): Escape
 	resetEscape()
 	local state: Escape =
-		{ screen = screen, kind = kind, tweens = {}, scales = {}, rotations = {}, transparencies = {}, texts = {}, visibles = {}, images = {} }
+		{ screen = screen, kind = kind, tweens = {}, scales = {}, rotations = {}, transparencies = {}, texts = {}, visibles = {}, images = {}, colors = {} }
 	escape = state
 	screen.Enabled = true
 	return state
@@ -704,18 +767,99 @@ local function closeEscapeLater(state: Escape, delay: number)
 	end)
 end
 
-local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
+-- a521 (L-465) : couleur de la rareté `rarityId` (Config/Rarities, Color ; Secret : la 1re de RainbowColors) ; nil sinon.
+local function rarityColor(rarityId: string?): Color3?
+	if type(rarityId) ~= "string" then
+		return nil
+	end
+	local ok, color = pcall(function(): Color3?
+		local Rarities = require(Shared:WaitForChild("Config"):WaitForChild("Rarities")) :: any
+		local def = Rarities.ById[rarityId]
+		if def == nil then
+			return nil
+		end
+		local rainbow = def.RainbowColors
+		if type(rainbow) == "table" and typeof(rainbow[1]) == "Color3" then
+			return rainbow[1]
+		end
+		return if typeof(def.Color) == "Color3" then def.Color else nil
+	end)
+	return if ok then color else nil
+end
+
+-- a521 (L-465, Features.SafeLineFlash) : Flash plein à `color` sur Hold s (2 images), puis vers 1 en Time s Quad Out ;
+-- Card cachée CardDelay s. Couleur et transparence de Clément remises par resetEscape. Rend false sans réglages.
+local function lineFlash(state: Escape, color: Color3): boolean
+	local settings = securedSettings()
+	local spec = if settings then settings.LineFlash else nil
+	if type(spec) ~= "table" then
+		return false
+	end
+	local flash = Find.path(state.screen, "Flash")
+	if flash and flash:IsA("GuiObject") then
+		local object = flash :: GuiObject
+		if state.transparencies[object] == nil then
+			state.transparencies[object] = object.BackgroundTransparency
+		end
+		if not state.colors[object] then
+			state.colors[object] = object.BackgroundColor3
+		end
+		object.BackgroundColor3 = color
+		object.BackgroundTransparency = 0
+		local info = TweenInfo.new(spec.Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		task.delay(spec.Hold, function()
+			if escape == state and object.Parent ~= nil then
+				escapePlay(state, TweenService:Create(object, info, { BackgroundTransparency = 1 }))
+			end
+		end)
+	end
+	local card = Find.path(state.screen, "Card")
+	if card and card:IsA("GuiObject") then
+		local object = card :: GuiObject
+		if state.visibles[object] == nil then
+			state.visibles[object] = object.Visible
+		end
+		local shown = state.visibles[object]
+		object.Visible = false
+		task.delay(spec.CardDelay, function()
+			if escape == state and object.Parent ~= nil then
+				object.Visible = shown
+			end
+		end)
+	end
+	return true
+end
+
+type Secured = { Income: number?, Weight: number?, Lucky: boolean? }
+
+local function escapeScreen(tier: string?, rarity: string?, itemId: string?, secured: Secured?)
 	local screen = findEscapeScreen()
 	if screen == nil then
 		return
 	end
 	local state = newEscape(screen, "Escape")
-	if not tensionFlash(state) then -- a465 (L-340) : 0 → 0,6 → 1 avec la tension
-		escapeFlash(state, SAFE.FlashFrom, SAFE_FLASH_INFO)
-	end
-
 	-- Objet ramené (vague 46) : Title et Subtitle passagers, remis par resetEscape.
 	local itemRarity, itemText = itemInfo(itemId)
+	local lineColor = if itemRarity and switchOn("SafeLineFlash") then rarityColor(itemRarity) else nil
+	-- a521 (L-465) : flash à la couleur de la rareté, à la place des deux flashs d'avant.
+	local lined = lineColor ~= nil and lineFlash(state, lineColor)
+	if not lined and not tensionFlash(state) then -- a465 (L-340) : 0 → 0,6 → 1 avec la tension
+		escapeFlash(state, SAFE.FlashFrom, SAFE_FLASH_INFO)
+	end
+	-- a521 (bug du Play du lot 1) : Card.Weight = le poids de l'objet ramené (3e argument d'ItemSecured,
+	-- Shared/ItemWeight.Format), vide sans poids ; le texte de Clément est remis par resetEscape, comme Subtitle.
+	if type(itemId) == "string" and itemId ~= "" then
+		local weight = if secured then secured.Weight else nil
+		local weightModule = itemWeight()
+		local text = ""
+		if type(weight) == "number" and weightModule then
+			local ok, formatted = pcall(weightModule.Format, weight)
+			if ok and type(formatted) == "string" then
+				text = formatted
+			end
+		end
+		escapeText(state, Find.path(screen, "Card.Weight"), text)
+	end
 	local foundBanner = Find.path(screen, "Banner")
 	local banner: GuiObject? = if foundBanner and foundBanner:IsA("GuiObject") then foundBanner :: GuiObject else nil
 	local bannerScale = if banner then escapeScale(state, banner, 0) else nil
@@ -754,6 +898,14 @@ local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
 			end
 			object.Visible = false
 		end
+		if itemText and icon and icon:IsA("GuiObject") and switchOn("SecuredCardV2") then
+			-- a521 (L-405) : la carte montre l'objet, la bannière ne remontre plus BoxIcon ; Visible remis par resetEscape.
+			local object = icon :: GuiObject
+			if state.visibles[object] == nil then
+				state.visibles[object] = object.Visible
+			end
+			object.Visible = false
+		end
 		for rank, name in SAFE.Parts do
 			local part = Find.path(banner, name)
 			local partScale = if part and part:IsA("GuiObject") then escapeScale(state, part :: GuiObject, 0) else nil
@@ -764,6 +916,20 @@ local function escapeScreen(tier: string?, rarity: string?, itemId: string?)
 						escapePlay(state, TweenService:Create(scale, SAFE_PARTS_INFO, { Scale = 1 }))
 					end
 				end)
+			end
+		end
+	end
+	-- a521 (L-405, Features.SecuredCardV2) : l'objet en 3D, le sunburst par palier, TierScale et RarityTag.
+	if itemText then
+		local card = securedCard()
+		if card then
+			local ok, err = pcall(card.Play, screen, {
+				ItemId = itemId,
+				Income = if secured then secured.Income else nil,
+				Lucky = if secured then secured.Lucky else nil,
+			})
+			if not ok and IS_STUDIO then
+				print(`[UiFeel] carte ITEM SECURED (SecuredCard) en erreur : {err}`)
 			end
 		end
 	end
@@ -781,24 +947,31 @@ end
 
 -- L'arrivée en zone safe : sons (Heist_SafeFlash, puis Heist_Escape SoundGap s après), champ de
 -- vision, écran UI_Escape (Flash, puis Banner, Title, BoxIcon, Subtitle), FX_Escape. `itemId` (vague 46,
--- remote ItemSecured) : objet ramené, son icône et son nom.
-function UiFeelController.Escape(tier: string?, rarity: string?, itemId: string?)
+-- remote ItemSecured) : objet ramené, son icône et son nom. `secured` (a521) : { Income, Weight, Lucky } du serveur
+-- (3 derniers arguments d'ItemSecured) : poids de Card.Weight, palier de la carte (Escape/SecuredCard).
+function UiFeelController.Escape(tier: string?, rarity: string?, itemId: string?, secured: Secured?)
 	escapes += 1
+	-- a521 (L-465, Features.SafeLineFlash) : le son d'arrivée part LineFlash.SoundDelay s après le flash.
+	local settings = securedSettings()
+	local soundDelay = if settings and type(itemId) == "string" and switchOn("SafeLineFlash") then settings.LineFlash.SoundDelay else 0
 	for rank, name in SAFE.Sounds do
-		if rank == 1 then
+		if rank == 1 and soundDelay <= 0 then
 			Motion.PlaySound(name)
 		else
-			task.delay((rank - 1) * SAFE.SoundGap, function()
+			task.delay(soundDelay + (rank - 1) * SAFE.SoundGap, function()
 				Motion.PlaySound(name)
 			end)
 		end
 	end
 	escapeFov()
-	escapeScreen(tier, rarity, itemId)
-	-- Confettis, étoiles et anneau de FX_Escape aux pieds du joueur (vague 26, VfxController).
+	escapeScreen(tier, rarity, itemId, secured)
+	-- Confettis, étoiles et anneau de FX_Escape aux pieds du joueur (vague 26, VfxController). a521 (L-396 a) : avec les
+	-- feux d'artifice du monde (Features.SecuredFireworks ou SecuredFireworksDev), ni Confetti ni Stars
+	-- (Config/SecuredCard.EscapeSkip) ; l'anneau au sol reste.
 	local vfx = sibling("VfxController")
 	if vfx and type(vfx.Escape) == "function" then
-		task.spawn(vfx.Escape)
+		local skip = if settings and switchOn("SecuredFireworks") then settings.EscapeSkip else nil
+		task.spawn(vfx.Escape, skip)
 	end
 end
 
@@ -823,6 +996,16 @@ function UiFeelController.RevealFlash()
 		local object = banner :: GuiObject
 		state.visibles[object] = object.Visible
 		object.Visible = false
+	end
+	-- a521 (bug) : le voile, la carte ITEM SECURED (textes de maquette) et ses effets de Clément, visibles dans Studio,
+	-- ne passent plus avec le flash d'une révélation ; remis par resetEscape.
+	for _, name in { "Veil", "Card", "SecuredFx" } do
+		local part = Find.path(screen, name)
+		if part and part:IsA("GuiObject") then
+			local object = part :: GuiObject
+			state.visibles[object] = object.Visible
+			object.Visible = false
+		end
 	end
 	escapeFlash(state, REVEAL.FlashFrom, REVEAL_FLASH_INFO)
 	closeEscapeLater(state, REVEAL.FlashTime)
@@ -887,8 +1070,12 @@ function UiFeelController.Start()
 	task.spawn(function()
 		local wired = pcall(function()
 			local Net = require(Shared:WaitForChild("Net"):WaitForChild("Net")) :: any
-			Net.Client.ItemSecured:Connect(function(itemId: string)
-				UiFeelController.Escape(nil, nil, itemId)
+			Net.Client.ItemSecured:Connect(function(itemId: string, income: number?, weight: number?, lucky: boolean?)
+				-- a521 : revenu, poids et coup de chance du serveur (Net/Definitions), lus s'ils sont du bon type.
+				local function finite(value: any): number?
+					return if type(value) == "number" and value == value and value >= 0 and value < math.huge then value else nil
+				end
+				UiFeelController.Escape(nil, nil, itemId, { Income = finite(income), Weight = finite(weight), Lucky = lucky == true })
 			end)
 		end)
 		if not wired and IS_STUDIO then
