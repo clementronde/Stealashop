@@ -1513,6 +1513,8 @@ table.insert(UI.Screens, {
 		{ Path = "Banner.Icon", Class = "ImageLabel", Optional = true, Note = "pas d'icône dans l'annonce" },
 		{ Path = "Banner.Message", Class = "TextLabel" },
 		{ Path = "Banner.Detail", Class = "TextLabel", Optional = true, Note = "pas de petite ligne sous le message" },
+		-- a543 (L-495) : carte d'une annonce venue d'un autre serveur (AnnounceController.PushBig).
+		{ Path = "BigAnnounce", Class = "GuiObject", Optional = true, Note = "annonce entre serveurs dans Banner" },
 	} :: { Element },
 })
 -- Nouvelle ouverture du colis (vague 73, a251 ; Clément, L-236 et L-246 ; Config/Unbox.New ; Controllers/Reveal/Unbox).
