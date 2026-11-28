@@ -54,7 +54,7 @@ local HeldItem = {
 	--           Roll ; penché vers sa droite : le baisser (négatif permis).
 	-- Régler par pas de 2 à 5 degrés. Pitch = Roll = 0 : l'objet tenu comme avant. Lu seulement si Level est vrai
 	-- (Features.HeldItemLevel partout, ou HeldItemLevelDev dans le jeu DEV) ; coupé : Tool.Grip exactement comme avant.
-	Pitch = 10, -- V0 calculé sans Play (a531, valeur la plus probable), absent du doc : degrés
+	Pitch = 0, -- V0 : 0 (Chef de projet de Clément, 28/11 : l'objet droit viendra de ToolIdle, L-510 ; a531 avait proposé 10), absent du doc : degrés
 	Roll = 0, -- V0 calculé sans Play (a531), absent du doc : degrés
 	-- Revérification de l'objet tenu (encore à lui, pas exposé, pas vendu, pas au coffre-fort, pas posé au sol).
 	-- Chaque changement de l'inventaire la fait aussi tout de suite.
