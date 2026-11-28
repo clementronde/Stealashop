@@ -519,6 +519,28 @@ local Features = {
 	ServerWinSound = false,
 	-- a522 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev).
 	ServerWinSoundDev = true,
+	-- a469 (Cantin, 25/11) : le revenu de l'objet tenu en main (BB_HeldIncome, « $300/s ») vu par tous les joueurs, pas
+	-- seulement le porteur (Config/HeldItem.IncomeForAll : HeldItemService pose le $/s sur le Tool, HeldIncomeController
+	-- le montre au-dessus de l'objet de chacun). Interrupteur PROD (partout) : false (règle C2 : pas encore de test
+	-- humain) ; false = le porteur seul voit son revenu, comme avant.
+	HeldIncomeAll = false,
+	-- a469 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	HeldIncomeAllDev = true,
+	-- a524 (L-447, Clément 26/11, repasse point 11) : les billets d'un gain ponctuel (récompense, prime de l'index) et
+	-- des gains hors ligne réclamés s'écartent d'abord (Config/HeistFeel.BillFly.SpreadTime, Quad Out) puis volent au
+	-- compteur ; à l'arrivée du premier, CashRow.CashIcon rebondit (BillFly.IconPop) avec le sursaut du nombre
+	-- (GainController.billFly). Interrupteur PROD (partout) : false (règle C2 : pas encore de test humain, T-387) ;
+	-- false = billets qui volent tout de suite, sans rebond de l'icône, gains hors ligne sans billets, comme avant.
+	GainFlyToCounter = false,
+	-- a524 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	GainFlyToCounterDev = true,
+	-- a524 (L-466, Clément 26/11) : objet posé sur un présentoir chez le joueur local (GainController.incomeFly) : l'objet
+	-- blanc puis ses couleurs (Highlight), « +$X/s » tenu plus longtemps au-dessus de lui, étoiles FX_DisplayPlace de
+	-- Clément, puis UI_HUD Income qui saute à l'arrivée (Config/Displayed.PlaceMoment). Interrupteur PROD (partout) :
+	-- false (règle C2 : pas encore de test humain, T-406) ; false = « +$X/s » qui vole après 0,35 s, comme avant.
+	DisplayPlaceMoment = false,
+	-- a524 : la même chose allumée dans le jeu DEV seulement (Config/ProductIds.IsDev), comme les autres nouveautés.
+	DisplayPlaceMomentDev = true,
 }
 
 export type Features = typeof(Features)

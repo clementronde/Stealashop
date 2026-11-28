@@ -48,6 +48,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage.Shared
 local HeldItem = require(Shared.Config.HeldItem)
+local Formulas = require(Shared.Config.Formulas) -- a469 : $/s de l'objet tenu (Tool, IncomeAttribute)
 local Items = require(Shared.Config.Items)
 local Mutations = require(Shared.Config.Mutations)
 local ItemWeight = require(Shared.ItemWeight) -- vague 62 (a203)
@@ -309,6 +310,13 @@ local function buildTool(player: Player, uid: string, entry: ItemEntry): Tool?
 	tool.RequiresHandle = true
 	tool.Grip = gripOf(size)
 	tool:SetAttribute(HeldItem.ToolAttribute, uid)
+	-- a469 : le $/s de l'objet, lu par HeldIncomeController chez tous les joueurs (même règle qu'InventoryService :
+	-- rareté, zone et rang de l'objet, mutation et poids compris, sans bonus), arrondi comme lui (a493 :
+	-- Formulas.RoundIncome ; a524) : le porteur et les autres lisent le même nombre. Coupé (IncomeForAll) : rien.
+	if HeldItem.IncomeForAll then
+		local income = Formulas.RoundIncome(Formulas.ItemIncome(def.Id) * Mutations.IncomeMultiplier(entry.Mutation, entry.Weight))
+		tool:SetAttribute(HeldItem.IncomeAttribute, income)
+	end
 	handle.Parent = tool
 	model.Parent = tool
 	return tool

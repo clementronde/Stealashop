@@ -1115,6 +1115,8 @@ for _, screenDef in UI.Screens do
 		-- fin de la liste du HUD reste SkillTreeButton).
 		table.insert(screenDef.Elements, 2, { Path = "CashFly.Bill", Class = "GuiObject", Optional = true, Note = "CashFly.Template sert de billet" })
 		table.insert(screenDef.Elements, 2, { Path = "CashFly.GainPop", Class = "TextLabel", Optional = true, Note = "CashFly.CounterPop sert au « +$X » du départ" })
+		-- a524 (L-447) : l'icône de CashRow rebondit à l'arrivée des billets (Features.GainFlyToCounter).
+		table.insert(screenDef.Elements, 2, { Path = "CashIcon", Class = "GuiObject", Optional = true, Note = "pas de rebond de l'icône à l'arrivée des billets (L-447)" })
 	end
 end
 

@@ -20,6 +20,22 @@
 
 local DeepFreeze = require(script.Parent.DeepFreeze)
 
+-- a469 : module de Config chargé s'il est là (bancs à liste de modules fixe), comme Config/Outlines.
+local function optional(name: string): any
+	local found, module = pcall(function(): any
+		return script.Parent:FindFirstChild(name)
+	end)
+	if found and module ~= nil then
+		local ok, result = pcall(require, module :: any)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return {}
+end
+local Features: any = optional("Features")
+local ProductIds: any = optional("ProductIds")
+
 local HeldItem = {
 	Forward = 0.1, -- V0 proposé, absent du doc : studs entre la main et la face arrière de l'objet
 	-- V0 proposé, absent du doc : plus grand côté (studs) au-delà duquel l'objet est « gros ». a418 (décision de Cantin
@@ -45,6 +61,13 @@ local HeldItem = {
 	-- heure serveur de la fin (absent : antivol pas encore lancé, verrou montré sans minuteur).
 	LockedAttribute = "AntiTheft",
 	UnlockAtAttribute = "UnlockAt",
+	-- a469 (Cantin, 25/11 : « il y a que moi qui le vois, faudrait que tous les joueurs le voient ») : le revenu de
+	-- l'objet tenu ($/s, mutation et poids compris, sans bonus : la règle d'InventoryService) est posé par le serveur
+	-- sur le Tool (HeldItemService) et HeldIncomeController montre BB_HeldIncome au-dessus de l'objet tenu par chaque
+	-- joueur, pas seulement le sien. Allumé partout (Features.HeldIncomeAll) ou dans le jeu DEV seulement
+	-- (Features.HeldIncomeAllDev et ProductIds.IsDev) ; coupé : rien n'est posé, le porteur seul le voit (comme avant).
+	IncomeForAll = Features.HeldIncomeAll == true or (Features.HeldIncomeAllDev == true and ProductIds.IsDev == true),
+	IncomeAttribute = "HeldIncome", -- sur le Tool : $/s de l'objet (nombre), écrit par le serveur seul
 }
 
 export type HeldItem = typeof(HeldItem)

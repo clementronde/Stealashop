@@ -91,6 +91,29 @@ local Displayed = {
 		Color = Color3.fromHex("#35C93B"), -- vert « acheter / OK » de la planche 10.6, pour le repli sans GainPop
 		Sound = "Cash_Collect", -- comme UiMotion.CashFly.Sound, une fois à l'arrivée
 	},
+
+	-- a524 (L-466, Clément 26/11 : « ok » ; Features.DisplayPlaceMoment / DisplayPlaceMomentDev) : la pose d'un objet sur un
+	-- présentoir, chez le joueur local seul (V0 : la question « qui voit le blanc et les étoiles » reste ouverte), avec le
+	-- vol d'IncomeFly : (1) l'objet blanc puis ses couleurs (un Highlight du client, FillTransparency 0 → 1 en FlashTime s,
+	-- Quad Out ; un seul à la fois) ; (2) « +$X/s » reste Hold s au-dessus de lui au lieu d'IncomeFly.Hold ; (3) les étoiles
+	-- de Clément (Assets/FX/<Fx>, Root/Burst : chaque émetteur Emit(EmitCount), retiré après son attribut Duration) sur le
+	-- centre de l'objet, FxDelay s après la pose ; (4) à l'arrivée, IncomePop.Name de UI_HUD saute de From à 1 en Time s
+	-- (Back Out) ; (5) « Exposer les meilleurs » garde IncomeFly.Stagger. Coupé : IncomeFly seul, comme avant.
+	PlaceMoment = {
+		Enabled = Features.DisplayPlaceMoment == true or (Features.DisplayPlaceMomentDev == true and ProductIds.IsDev == true),
+		Hold = 1.5, -- L-466 (avant IncomeFly.Hold, 0,35)
+		FlashName = "PlaceFlash", -- V0 proposé : nom du Highlight passager (détruit à la fin)
+		FlashColor = Color3.new(1, 1, 1), -- L-466 : blanc
+		FlashTime = 0.23, -- L-466
+		Fx = "FX_DisplayPlace", -- L-466, livré par Clément (v1263) ; absent : pas d'étoiles
+		FxDelay = 0.5, -- L-466
+		FxDuration = 1.2, -- V0 : si l'effet n'a pas d'attribut Duration (celui de Clément : 1,2)
+		IncomePop = {
+			Name = "Income", -- UI_HUD, CashRow.Income (TextLabel de Clément) ; absent : CashRow sursaute, comme avant
+			From = 1.15, -- L-466
+			Time = 0.2, -- L-466, Back Out
+		},
+	},
 }
 
 return DeepFreeze(Displayed)

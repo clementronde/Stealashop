@@ -24,8 +24,9 @@
 --     bloqué : il est réclamé tout seul, avec le Notify Offline.Message (« Your shop earned $X while you
 --     were away! ») et une ligne orange en Studio.
 -- Sans réponse du serveur au bout de CLAIM_TIMEOUT s (Claim refusé, remote perdu), l'écran peut se rouvrir.
--- Le Flyer caché de UI_Offline n'est pas utilisé (la case qui vole est UI_HUD.CashFly.Template, comme pour
--- les récompenses). Seuls sont touchés : Enabled de l'écran et le texte d'Amount (2.2, « Libre pour
+-- Le Flyer caché de UI_Offline n'est pas utilisé (la case qui vole est UI_HUD.CashFly.Template, sinon
+-- CashFly.Bill, a524 ; avec Features.GainFlyToCounter / GainFlyToCounterDev, les billets de CashFly.Bill comme pour
+-- les récompenses : GainController.billFly). Seuls sont touchés : Enabled de l'écran et le texte d'Amount (2.2, « Libre pour
 -- Ironix ») ; jamais un style. Un écran recréé (ResetOnSpawn) est rebranché, fermé.
 --
 -- API (client) :
