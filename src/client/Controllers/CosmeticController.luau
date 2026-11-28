@@ -26,6 +26,9 @@
 -- appareil faible (ShatterController.IsLowEnd, relu toutes les RemoteParticleCheckInterval s) la distance est
 -- PieceMotion.MaxDistanceLow. Pièce retirée (aura changée, porteur parti, streaming) : oubliée. VISUAL EFFECTS OFF : pièces cachées en local
 -- (LocalTransparencyModifier), mouvement arrêté ; leurs émetteurs, lumières et Beams s'éteignent comme le reste.
+-- a541 (L-511, piste A, Features.AuraCarryMode / AuraCarryModeDev) : pendant le port d'un joueur (attribut Carrying du
+-- Player), les Attachments de son aura marqués CarryMode par Clément s'éteignent (« Off ») ou baissent (« Dim »), chez
+-- tous les joueurs ; tout revient à la fin du port (voir applyCarry).
 --
 -- API (client) : CosmeticController.CutCount() -> number (effets natifs éteints, pour un banc).
 --   CosmeticController.PieceCount() -> (number, boolean) : pièces soudées suivies, boucle de mouvement branchée.
@@ -92,6 +95,112 @@ local function setRates(aura: Instance, factor: number)
 	end
 end
 
+-- a541 (L-511, piste A) : aura pendant le port -------------------------------------------------------------------
+-- Allumé par Features.AuraCarryMode partout, ou AuraCarryModeDev dans le jeu DEV (Config/ProductIds.IsDev). Pendant
+-- qu'un joueur porte (attribut Carrying du Player, posé par CarryService et répliqué à tous), chaque Attachment de son
+-- aura qui porte CarryMode : "Off" = ses émetteurs, lumières et Beams éteints ; "Dim" = débit × CarryAura.DimRate
+-- (dans setRates) et Brightness des lumières × CarryAura.DimLight. À la fin du port, tout revient à l'état d'avant.
+-- Pièces soudées et trails : inchangés. Avec VISUAL EFFECTS OFF : la coupure du joueur garde la main (table cut).
+local CARRY = Cosmetics.CarryAura
+-- VISUAL EFFECTS OFF (vague 24, plus bas) : [effet éteint] = Enabled d'origine.
+local cut: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local CARRYING_ATTRIBUTE = "Carrying" -- CarryService, sur le Player
+local OFF_CLASSES = { "ParticleEmitter", "Light", "Beam" }
+local carryLive = false
+local carryModes: { [Instance]: string } = {} -- [Attachment d'aura] = mode appliqué ("Off" ou "Dim")
+local carryOff: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- [effet éteint] = Enabled d'origine
+local carryLights: { [Instance]: number } = setmetatable({}, { __mode = "k" }) :: any -- [lumière baissée] = Brightness d'origine
+
+local function optionalConfig(name: string): any
+	local config = ReplicatedStorage:FindFirstChild("Shared")
+	config = if config then config:FindFirstChild("Config") else nil
+	local module = if config then config:FindFirstChild(name) else nil
+	if module == nil or not module:IsA("ModuleScript") then
+		return {}
+	end
+	local ok, result = pcall(require, module :: any)
+	return if ok and type(result) == "table" then result else {}
+end
+
+local function carryFactor(aura: Instance): number
+	return if carryModes[aura] == "Dim" then CARRY.DimRate else 1
+end
+
+local function isOffClass(inst: Instance): boolean
+	for _, class in OFF_CLASSES do
+		if inst:IsA(class) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Mode voulu pour cet Attachment d'aura : celui de Clément si son porteur porte un objet, sinon aucun.
+local function wantedMode(aura: Instance): string?
+	if not carryLive or not aura:IsA("Attachment") or aura:GetAttribute(FX_ATTRIBUTE) == nil then
+		return nil
+	end
+	local mode = aura:GetAttribute(CARRY.Attribute)
+	if mode ~= "Off" and mode ~= "Dim" then
+		return nil
+	end
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if character ~= nil and aura:IsDescendantOf(character) then
+			return if player:GetAttribute(CARRYING_ATTRIBUTE) ~= nil then mode :: string else nil
+		end
+	end
+	return nil
+end
+
+local function carryOffOne(inst: Instance)
+	if carryOff[inst] ~= nil or not isOffClass(inst) then
+		return
+	end
+	local effect = inst :: any
+	local was = cut[inst]
+	carryOff[inst] = if was ~= nil then was else effect.Enabled == true
+	effect.Enabled = false
+end
+
+local function applyCarry(aura: Instance)
+	local mode = wantedMode(aura)
+	local was = carryModes[aura]
+	if mode == was then
+		return
+	end
+	for _, child in aura:GetChildren() do
+		local original = carryOff[child]
+		if original ~= nil then
+			carryOff[child] = nil
+			if cut[child] ~= nil then
+				cut[child] = original -- VISUAL EFFECTS OFF : reste éteint, rallumé à son état d'origine plus tard
+			else
+				(child :: any).Enabled = original
+			end
+		end
+		local brightness = carryLights[child]
+		if brightness ~= nil then
+			carryLights[child] = nil;
+			(child :: any).Brightness = brightness
+		end
+	end
+	if mode ~= nil then
+		carryModes[aura] = mode
+	else
+		carryModes[aura] = nil
+	end
+	for _, child in aura:GetChildren() do
+		if mode == "Off" then
+			carryOffOne(child)
+		elseif mode == "Dim" and child:IsA("Light") and carryLights[child] == nil then
+			local light = child :: Light
+			carryLights[child] = light.Brightness
+			light.Brightness = light.Brightness * CARRY.DimLight
+		end
+	end
+end
+
 local function update()
 	local from = viewPoint()
 	if from == nil then
@@ -102,11 +211,15 @@ local function update()
 	for aura in auras do
 		if aura.Parent == nil then
 			auras[aura] = nil
+			carryModes[aura] = nil
 			continue
+		end
+		if carryLive then
+			applyCarry(aura) -- a541 : rattrape une copie taggée avant d'être rangée dans le perso
 		end
 		local mine = own ~= nil and aura:IsDescendantOf(own)
 		local far = not mine and (positionOf(aura) - from).Magnitude > CUT_DISTANCE
-		setRates(aura, if reduced then Settings.VfxOff.AuraFactor elseif far then CUT_FACTOR else 1)
+		setRates(aura, (if reduced then Settings.VfxOff.AuraFactor elseif far then CUT_FACTOR else 1) * carryFactor(aura))
 	end
 end
 
@@ -122,7 +235,7 @@ end
 local CUT_CLASSES = { "ParticleEmitter", "Light", "Beam", "Trail" }
 local TRAIL_NAME = "CosmeticTrail" -- CosmeticService
 local HALO_HOLDERS = { HaloPoint = true, RarityHalo = true } -- CarryService, DisplayService
-local cut: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any -- [effet éteint] = Enabled d'origine
+-- cut : déclaré plus haut (a541 : lu aussi par l'aura pendant le port).
 local vfxReduced = false
 
 local function isCuttable(inst: Instance): boolean
@@ -169,7 +282,8 @@ local function cutOne(inst: Instance)
 		return
 	end
 	local effect = inst :: any
-	cut[inst] = effect.Enabled == true
+	local carried = carryOff[inst] -- a541 : éteint par le port, on garde l'état d'avant le port
+	cut[inst] = if carried ~= nil then carried else effect.Enabled == true
 	effect.Enabled = false
 end
 
@@ -421,7 +535,7 @@ local function applyVfx()
 		end
 	else
 		for inst, was in cut do
-			if inst.Parent ~= nil then
+			if inst.Parent ~= nil and carryOff[inst] == nil then -- a541 : pendant le port, il reste éteint
 				(inst :: any).Enabled = was
 			end
 		end
@@ -441,13 +555,38 @@ end
 local function track(inst: Instance)
 	if inst:IsA("BasePart") or inst:IsA("Attachment") then
 		auras[inst] = true
+		applyCarry(inst) -- a541 : aura arrivée pendant un port (streaming, aura changée)
 	end
 end
 
+-- a541 : port commencé ou fini chez ce joueur : ses Attachments d'aura prennent ou rendent leur CarryMode.
+local function refreshCarry()
+	for aura in auras do
+		if aura.Parent ~= nil then
+			applyCarry(aura)
+		end
+	end
+	update()
+end
+
+local function watchCarry(player: Player)
+	player:GetAttributeChangedSignal(CARRYING_ATTRIBUTE):Connect(refreshCarry)
+end
+
 function CosmeticController.Start()
+	-- a541 (L-511) : aura pendant le port, lu une fois au démarrage.
+	local features = optionalConfig("Features")
+	carryLive = features.AuraCarryMode == true or (features.AuraCarryModeDev == true and optionalConfig("ProductIds").IsDev == true)
+	if carryLive then
+		Players.PlayerAdded:Connect(watchCarry)
+		for _, player in Players:GetPlayers() do
+			watchCarry(player)
+		end
+	end
 	CollectionService:GetInstanceAddedSignal(AURA_TAG):Connect(track)
 	CollectionService:GetInstanceRemovedSignal(AURA_TAG):Connect(function(inst: Instance)
 		auras[inst] = nil
+		carryModes[inst] = nil
 	end)
 	for _, inst in CollectionService:GetTagged(AURA_TAG) do
 		track(inst)
@@ -461,6 +600,11 @@ function CosmeticController.Start()
 
 	-- VISUAL EFFECTS (vague 24) : trails, lumière d'aura et halos de rareté éteints tant que c'est OFF.
 	Workspace.DescendantAdded:Connect(function(inst: Instance)
+		-- a541 : effet arrivé sous un Attachment éteint pendant le port.
+		local parent = inst.Parent
+		if parent ~= nil and carryModes[parent] == "Off" then
+			carryOffOne(inst)
+		end
 		if vfxReduced then
 			cutOne(inst)
 		end

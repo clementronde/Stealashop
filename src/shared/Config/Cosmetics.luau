@@ -184,6 +184,13 @@ local Cosmetics = {
 	RemoteParticleCutFactor = 0.5,
 	-- V0 : intervalle (s) entre deux mesures de distance des auras des autres joueurs.
 	RemoteParticleCheckInterval = 0.5,
+	-- a541 (L-511, piste A) : aura pendant le port (Features.AuraCarryMode / AuraCarryModeDev ; CosmeticController).
+	-- Attribut CarryMode posé par Clément sur les Attachments des FX_Aura_* : "Off" ou "Dim" ; sans attribut : rien.
+	CarryAura = {
+		Attribute = "CarryMode",
+		DimRate = 0.3, -- Clément (L-511) : débit des émetteurs d'un Attachment « Dim » = FullRate × 0,3
+		DimLight = 0.3, -- Clément (L-511) : Brightness de ses lumières à 30 %
+	},
 	-- Vague 63 (a210, L-206) : mouvement des pièces soudées des auras de Clément (attributs Spin, Orbit, Tumble,
 	-- Period ; CosmeticController), une seule boucle côté client pour tous les porteurs.
 	PieceMotion = {
