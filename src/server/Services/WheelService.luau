@@ -281,7 +281,7 @@ local function onSpinWheel(player: Player)
 		local gift: Grant.Reveal = shown
 		local text: string = message
 		task.delay(Wheel.SpinSeconds, function()
-			local okReveal, started = pcall(MonetizationService.StartGiftReveal, player, gift.ItemId, gift.StartRarity, gift.Chance, gift.Effect)
+			local okReveal, started = pcall(MonetizationService.StartGiftReveal, player, gift.ItemId, gift.StartRarity, gift.Chance, gift.Effect, gift.TagZone)
 			if not (okReveal and started == true) and player.Parent == Players then
 				notify(player, text, "Info")
 			end

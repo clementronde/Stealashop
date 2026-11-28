@@ -47,7 +47,7 @@ local UnboxService = require(Services.UnboxService)
 type Prize = Wheel.Prize
 
 -- a309 : l'ouverture d'un colis de zone donné (ZoneBox), à lancer par l'appelant (MonetizationService.StartGiftReveal).
-export type Reveal = { ItemId: string, StartRarity: string, Chance: number, Effect: string? }
+export type Reveal = { ItemId: string, StartRarity: string, Chance: number, Effect: string?, TagZone: number? } -- a517 : TagZone
 
 local MESSAGES = Rewards.Messages
 
@@ -145,7 +145,7 @@ function Grant.Give(player: Player, prize: Prize): (boolean, string, number, str
 		local def = Items.ById[itemId]
 		local rarity = if def then Rarities.ById[def.Rarity] else nil
 		local name = if def then Mutations.ItemName(def.DisplayName, if entry then entry.Mutation else nil) else tostring(itemId)
-		local reveal: Reveal = { ItemId = itemId, StartRarity = gift.StartRarity, Chance = gift.Chance, Effect = gift.Effect }
+		local reveal: Reveal = { ItemId = itemId, StartRarity = gift.StartRarity, Chance = gift.Chance, Effect = gift.Effect, TagZone = gift.TagZone }
 		return true, string.format(MESSAGES.Item, if rarity then rarity.DisplayName else "", name), 0, nil, reveal
 	elseif kind == "Boost" then
 		local minutes = prize.Minutes or 0

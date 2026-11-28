@@ -948,13 +948,17 @@ local function v2Rule(name: string): ZoneBoxOdds.Rule?
 end
 
 -- a516 (V2) : rareté d'un colis de règle `rule`, zone de référence `zone` (ZoneBoxOdds, comme dropFor et le camion).
-local function v2Rarity(rule: ZoneBoxOdds.Rule, zone: number): string?
-	local ok, rarity = pcall(function(): string?
+-- a517 : renvoie aussi la zone du colis (étiquette « ZONE N » si plus haute que celle du palier).
+local function v2Rarity(rule: ZoneBoxOdds.Rule, zone: number): (string?, number?)
+	local ok, rarity, boxZone = pcall(function(): (string?, number?)
 		local z = ZoneBoxOdds.Zone(rule, zone)
 		local drawn = if z then ZoneBoxOdds.Draw(ZoneBoxOdds.Chances(rule, z), math.random()) else nil
-		return if drawn then drawn.Id else nil
+		return if drawn then drawn.Id else nil, z
 	end)
-	return if ok then rarity else nil
+	if not ok then
+		return nil, nil
+	end
+	return rarity, boxZone
 end
 
 -- a516 (V2) : les colis de la zone du palier (V2.Boxes) tombent autour du fourgon sur un seul rayon d'événement, à
@@ -972,6 +976,7 @@ local function breakV2(current: Van)
 		then (blast :: Attachment).WorldPosition
 		else model:GetBoundingBox().Position
 	local rarities: { string } = {}
+	local boxZones: { [number]: number } = {} -- a517 : zone de chaque colis (même index que rarities)
 	for _, entry in V2CFG.Boxes do
 		local rule = v2Rule(entry.Rule)
 		if rule == nil then
@@ -979,9 +984,12 @@ local function breakV2(current: Van)
 			continue
 		end
 		for _ = 1, entry.Count do
-			local rarity = v2Rarity(rule, zone)
+			local rarity, boxZone = v2Rarity(rule, zone)
 			if rarity then
 				table.insert(rarities, rarity)
+				if boxZone then
+					boxZones[#rarities] = boxZone
+				end
 			else
 				warnOnce(`v2rarity:{entry.Rule}:{zone}`, `V2 : aucune rareté pour un colis {entry.Rule} de zone {zone}`)
 			end
@@ -1007,7 +1015,7 @@ local function breakV2(current: Van)
 			local point = behind + pivot.RightVector * offsets[index]
 			landing = Vector3.new(point.X, groundY(point, { model }), point.Z)
 		end
-		table.insert(spots, { CFrame = CFrame.new(landing :: Vector3), Rarity = rarity, From = from })
+		table.insert(spots, { CFrame = CFrame.new(landing :: Vector3), Rarity = rarity, From = from, Zone = boxZones[index] })
 	end
 	local lifetime = if TruckConfig and type(TruckConfig.FlightTime) == "number" and type(TruckConfig.BoxLifetime) == "number"
 		then TruckConfig.FlightTime + TruckConfig.BoxLifetime

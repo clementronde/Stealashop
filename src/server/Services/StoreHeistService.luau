@@ -354,6 +354,14 @@ local Net = require(Shared.Net.Net)
 local Announce = require(Shared.Announce) -- a254 (L-240 point 3)
 local ShelfOpenState = require(Shared.ShelfOpenState)
 local OpenLuck = require(Shared.OpenLuck) -- a476 (L-374) : formule de la chance d'une ouverture
+-- a517 : étiquette « ZONE N » d'un colis d'une zone plus haute (Shared/BoxZoneTag) ; protégé : absent (faux arbre
+-- d'un banc), aucune étiquette.
+local BoxZoneTag: any = (function(): any
+	local ok, module = pcall(function(): any
+		return require(Shared.BoxZoneTag)
+	end)
+	return if ok then module else nil
+end)()
 local Features = require(Shared.Config.Features)
 -- a241 : Chase.ChaseOnEmptyExit ; Config/Chase absent (bancs à arbre partiel) : la règle d'avant.
 local Chase: any = if Shared.Config:FindFirstChild("Chase") then require(Shared.Config.Chase) :: any else {}
@@ -1113,9 +1121,14 @@ local function discard(box: ShelfBox)
 end
 
 -- Pose un colis sur le rayon vide `slot`, en vol depuis `from` s'il est donné. `rarity` : rareté de la
--- caisse (le contenu est tiré à la sortie, vague 32).
-local function placeBox(slot: Slot, rarity: string, from: Vector3?)
+-- caisse (le contenu est tiré à la sortie, vague 32). a517 : `boxZone`, zone du colis connue à l'apparition (rayon
+-- d'événement, EventSpot.Zone) : attribut BoxZone si elle est plus haute que celle du rayon (Shared/BoxZoneTag) ; un
+-- rayon PNJ n'a que des colis de sa zone (rien à passer).
+local function placeBox(slot: Slot, rarity: string, from: Vector3?, boxZone: number?)
 	local model = makeBoxModel(slot, rarity)
+	if BoxZoneTag then
+		model:SetAttribute(BoxZoneTag.Attribute, BoxZoneTag.Shown(boxZone, slot.Store.Zone))
+	end
 	local box: ShelfBox = { Rarity = rarity, Model = model, Landed = false, StopFlight = nil }
 	local target = slot.Attachment.WorldCFrame
 	slot.Box = box
@@ -3800,6 +3813,7 @@ export type EventSpot = {
 	Tier: string?, -- vague 76 : ignoré (le temps de maintien suit la rareté du colis, ShelfBoxes.GrabTime)
 	Rarity: string, -- rareté de la caisse (BOX_<Rareté>), tirée par l'appelant
 	From: Vector3?, -- départ d'un vol jusqu'au point (placeBox), sinon posé tout de suite
+	Zone: number?, -- a517 : zone du colis (règle de colis de zone) : étiquette « ZONE N » si plus haute que Zone du rayon
 }
 
 export type EventShelfOptions = {
@@ -3924,7 +3938,7 @@ local function addEventShelf(options: EventShelfOptions): Model?
 	model.Parent = Workspace
 	for index, slot in store.Slots do
 		local spot = options.Spots[index]
-		placeBox(slot, spot.Rarity, spot.From)
+		placeBox(slot, spot.Rarity, spot.From, spot.Zone)
 	end
 	task.delay(options.Lifetime, function()
 		removeEventStore(store, `fin de sa durée de vie ({options.Lifetime} s)`)

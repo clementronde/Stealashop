@@ -74,6 +74,9 @@ local unboxModule = RevealFolder:FindFirstChild("Unbox")
 local planModule = Shared:FindFirstChild("UnboxPlan")
 local Unbox: any = if unboxModule and planModule then require(unboxModule) else nil
 local UnboxPlan: any = if unboxModule and planModule then require(planModule) else nil
+-- a517 : étiquette « ZONE N » du colis (Shared/BoxZoneTag), facultative (absente d'un faux arbre de banc : rien).
+local boxZoneModule = Shared:FindFirstChild("BoxZoneTag")
+local BoxZoneTag: any = if boxZoneModule then require(boxZoneModule) else nil
 
 type Payload = Logic.Payload
 type SizeClass = Logic.SizeClass
@@ -1380,6 +1383,12 @@ local function beginUnbox(scene: Scene, slotFrame: CFrame, aisleDir: Vector3)
 		hideLocal(scene, shelfBox) -- le vrai colis reste sur son rayon, caché : c'est sa copie locale qui saute dans l'allée
 	end
 	scene.unbox = state
+	-- a517 : « ZONE N » sur le billboard de l'ouverture (BB_UnboxOdds) : celle du colis offert (RevealStarted), sinon celle
+	-- du colis du rayon (attribut BoxZone, posé par le serveur) ; sans zone, ZoneTag reste caché.
+	if BoxZoneTag then
+		local zone = payload.BoxZone or (if shelfBox then shelfBox:GetAttribute(BoxZoneTag.Attribute) else nil)
+		pcall(BoxZoneTag.Apply, state.board, zone)
+	end
 	scene.base = state.base
 	scene.aisle = state.base.LookVector
 	scene.maxT = UnboxPlan.clientMaxSeconds(payload.Rarity, payload.SizeClass, #plan.Steps) -- vague 74 : selon le plan tiré

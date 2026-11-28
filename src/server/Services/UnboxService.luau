@@ -151,6 +151,13 @@ local ShelfOpen = require(Shared.Config.ShelfOpen)
 local Unbox = require(Shared.Config.Unbox)
 local Zones = require(Shared.Config.Zones)
 local ZoneBoxOdds = require(Shared.ZoneBoxOdds) -- a309
+-- a517 : étiquette « ZONE N » du colis offert (Shared/BoxZoneTag) ; protégé : absent (faux arbre d'un banc), aucune.
+local BoxZoneTag: any = (function(): any
+	local ok, module = pcall(function(): any
+		return require(Shared.BoxZoneTag)
+	end)
+	return if ok then module else nil
+end)()
 local Find = require(Shared.Contract.Find)
 
 local Net = require(Shared.Net.Net)
@@ -1547,6 +1554,7 @@ export type ZoneBoxGift = {
 	Rarity: string, -- rareté tirée (celle de l'objet)
 	Chance: number, -- sa chance dans ce colis, en pour cent
 	StartRarity: string, -- la plus basse rareté possible de ce colis (montrée sur le colis au début de l'ouverture)
+	TagZone: number?, -- a517 : zone écrite « ZONE N » sur le colis (plus haute que bestZone, Shared/BoxZoneTag), sinon nil
 	Effect: string?, -- effet de la mutation de l'objet (Mutations), montré pendant l'ouverture
 }
 
@@ -1582,7 +1590,7 @@ function UnboxService.GiveZoneBoxItem(player: Player, rule: ZoneBoxOdds.Rule, be
 	log(`{player.Name} : colis de zone offert, zone {zone} : {item.Id} ({drawn.Id}, {string.format("%.3f", drawn.Chance)} %{if mutated then ", mutation " .. mutated else ""}) mis dans l'inventaire ({itemUid})`)
 	discover(player, item.Id)
 	refreshInventory(player)
-	return itemUid, nil, item.Id, { Zone = zone, Rarity = drawn.Id, Chance = drawn.Chance, StartRarity = chances[1].Id, Effect = if mutation then mutation.Effect else nil }
+	return itemUid, nil, item.Id, { Zone = zone, Rarity = drawn.Id, Chance = drawn.Chance, StartRarity = chances[1].Id, Effect = if mutation then mutation.Effect else nil, TagZone = if BoxZoneTag then BoxZoneTag.Shown(zone, bestZone) else nil }
 end
 
 function UnboxService.GetWaiting(player: Player): { [string]: number }
