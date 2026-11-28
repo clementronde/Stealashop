@@ -34,7 +34,7 @@ local Settings = require(Config:WaitForChild("SecuredCard")) :: any
 local SecuredTier = require(Shared:WaitForChild("SecuredTier"))
 local Find = require(Shared:WaitForChild("Contract"):WaitForChild("Find"))
 
-export type Info = { ItemId: string, Income: number?, Lucky: boolean? }
+export type Info = { ItemId: string, Income: number?, Lucky: boolean?, Card: Instance? }
 
 type Saved = { object: Instance, property: string, value: any }
 type SavedAttr = { object: Instance, name: string, value: any }
@@ -269,7 +269,8 @@ function SecuredCard.Play(screen: ScreenGui, info: Info): string?
 	if not SecuredTier.On("SecuredCardV2") then
 		return nil
 	end
-	local card = Find.path(screen, "Card")
+	-- a543 (L-495) : info.Card = une autre carte (UI_Announce.BigAnnounce), sinon screen.Card.
+	local card = if info.Card then info.Card else Find.path(screen, "Card")
 	local def = if type(info.ItemId) == "string" then Items.ById[info.ItemId] else nil
 	if card == nil or def == nil then
 		return nil

@@ -932,6 +932,26 @@ local List: { RemoteDef } = {
 		},
 	},
 	{
+		-- a543 (L-495, liaison L-405) : annonce d'un gros objet ramené sur un AUTRE serveur (CrossServerAnnounce), dans
+		-- UI_Announce.BigAnnounce de Clément (carte de UI_Escape.Card, objet en 3D) ; sans BigAnnounce : Banner avec
+		-- message, detail, icon et plain, comme le remote Announce. who = « {player} got {a} » (Message), name = nom de
+		-- l'objet (mutation comprise), income = $/s calculé par le serveur, weight = kg (0 : sans poids).
+		Name = "BigAnnounce",
+		Direction = "ServerToClient",
+		Reliable = true,
+		Args = {
+			{ Name = "message", Kind = "string", Max = 400 },
+			{ Name = "detail", Kind = "string", Min = 0, Max = 120 },
+			{ Name = "icon", Kind = "string", Min = 0, Max = 160 },
+			{ Name = "plain", Kind = "string", Max = MAX_MESSAGE_LENGTH },
+			id("itemId"),
+			{ Name = "who", Kind = "string", Min = 0, Max = 120 },
+			{ Name = "name", Kind = "string", Min = 0, Max = 120 },
+			{ Name = "income", Kind = "number", Min = 0 },
+			{ Name = "weight", Kind = "number", Min = 0 },
+		},
+	},
+	{
 		-- Vague 80 (a266, DEV-132), absent du tableau 9.4 : bouton ClaimButton d'une ligne de UI_Quests. slot = place de la
 		-- quête (1 à Config/Quests.PerDay) ; QuestService vérifie qu'elle est finie et pas réclamée, puis donne la récompense.
 		-- Aucune progression ne vient du client.
